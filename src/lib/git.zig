@@ -1,1 +1,174 @@
-test "placeholder" {}
+const std = @import("std");
+
+pub const WorktreeInfo = struct {
+    path: []const u8,
+    head: []const u8,
+    branch: ?[]const u8, // null for detached HEAD
+    is_bare: bool,
+};
+
+pub const WorktreeStatus = struct {
+    modified: usize,
+    untracked: usize,
+};
+
+/// Parse output of `git worktree list --porcelain` into WorktreeInfo structs.
+/// Returned slice is owned by caller. Strings point into the input buffer.
+pub fn parseWorktreeList(allocator: std.mem.Allocator, output: []const u8) ![]WorktreeInfo {
+    var worktrees = std.ArrayList(WorktreeInfo).init(allocator);
+    defer worktrees.deinit();
+
+    var current: WorktreeInfo = .{ .path = "", .head = "", .branch = null, .is_bare = false };
+    var in_entry = false;
+
+    var lines = std.mem.splitScalar(u8, output, '\n');
+    while (lines.next()) |line| {
+        if (line.len == 0) {
+            if (in_entry) {
+                try worktrees.append(current);
+                current = .{ .path = "", .head = "", .branch = null, .is_bare = false };
+                in_entry = false;
+            }
+            continue;
+        }
+
+        if (std.mem.startsWith(u8, line, "worktree ")) {
+            current.path = line["worktree ".len..];
+            in_entry = true;
+        } else if (std.mem.startsWith(u8, line, "HEAD ")) {
+            current.head = line["HEAD ".len..];
+        } else if (std.mem.startsWith(u8, line, "branch refs/heads/")) {
+            current.branch = line["branch refs/heads/".len..];
+        } else if (std.mem.eql(u8, line, "bare")) {
+            current.is_bare = true;
+        }
+    }
+
+    // Handle last entry if no trailing newline
+    if (in_entry) {
+        try worktrees.append(current);
+    }
+
+    return worktrees.toOwnedSlice();
+}
+
+/// Parse output of `git status --porcelain` into counts.
+pub fn parseStatusPorcelain(output: []const u8) WorktreeStatus {
+    var modified: usize = 0;
+    var untracked: usize = 0;
+
+    var lines = std.mem.splitScalar(u8, output, '\n');
+    while (lines.next()) |line| {
+        if (line.len < 2) continue;
+        if (line[0] == '?' and line[1] == '?') {
+            untracked += 1;
+        } else {
+            modified += 1;
+        }
+    }
+
+    return .{ .modified = modified, .untracked = untracked };
+}
+
+/// Run a git command and return stdout. Caller owns returned memory.
+pub fn runGit(allocator: std.mem.Allocator, cwd: ?[]const u8, args: []const []const u8) ![]u8 {
+    var argv = std.ArrayList([]const u8).init(allocator);
+    defer argv.deinit();
+    try argv.append("git");
+    try argv.appendSlice(args);
+
+    const result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = argv.items,
+        .cwd = cwd,
+    }) catch {
+        return error.GitNotFound;
+    };
+    defer allocator.free(result.stderr);
+
+    switch (result.term) {
+        .Exited => |code| {
+            if (code != 0) {
+                allocator.free(result.stdout);
+                return error.GitCommandFailed;
+            }
+            return result.stdout;
+        },
+        else => {
+            allocator.free(result.stdout);
+            return error.GitCommandFailed;
+        },
+    }
+}
+
+// --- Tests ---
+
+test "parseWorktreeList parses two worktrees" {
+    const input =
+        \\worktree /Users/jl/src/myapp
+        \\HEAD abc123def456789012345678901234567890abcd
+        \\branch refs/heads/main
+        \\
+        \\worktree /Users/jl/src/myapp--feat
+        \\HEAD def456abc123789012345678901234567890abcd
+        \\branch refs/heads/feat
+        \\
+    ;
+
+    const result = try parseWorktreeList(std.testing.allocator, input);
+    defer std.testing.allocator.free(result);
+
+    try std.testing.expectEqual(@as(usize, 2), result.len);
+    try std.testing.expectEqualStrings("/Users/jl/src/myapp", result[0].path);
+    try std.testing.expectEqualStrings("main", result[0].branch.?);
+    try std.testing.expectEqualStrings("/Users/jl/src/myapp--feat", result[1].path);
+    try std.testing.expectEqualStrings("feat", result[1].branch.?);
+}
+
+test "parseWorktreeList handles detached HEAD" {
+    const input =
+        \\worktree /Users/jl/src/myapp--detached
+        \\HEAD abc123def456789012345678901234567890abcd
+        \\detached
+        \\
+    ;
+
+    const result = try parseWorktreeList(std.testing.allocator, input);
+    defer std.testing.allocator.free(result);
+
+    try std.testing.expectEqual(@as(usize, 1), result.len);
+    try std.testing.expect(result[0].branch == null);
+}
+
+test "parseWorktreeList handles bare worktree" {
+    const input =
+        \\worktree /Users/jl/src/myapp.git
+        \\HEAD abc123def456789012345678901234567890abcd
+        \\bare
+        \\
+    ;
+
+    const result = try parseWorktreeList(std.testing.allocator, input);
+    defer std.testing.allocator.free(result);
+
+    try std.testing.expectEqual(@as(usize, 1), result.len);
+    try std.testing.expect(result[0].is_bare);
+}
+
+test "parseStatusPorcelain counts modified and untracked" {
+    const input =
+        \\ M src/main.zig
+        \\?? new_file.txt
+        \\MM src/lib.zig
+    ;
+
+    const status = parseStatusPorcelain(input);
+    try std.testing.expectEqual(@as(usize, 2), status.modified);
+    try std.testing.expectEqual(@as(usize, 1), status.untracked);
+}
+
+test "parseStatusPorcelain handles empty output" {
+    const status = parseStatusPorcelain("");
+    try std.testing.expectEqual(@as(usize, 0), status.modified);
+    try std.testing.expectEqual(@as(usize, 0), status.untracked);
+}
