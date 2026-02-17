@@ -1,5 +1,14 @@
+[copy]
+paths = [
+  ".claude/settings.local.json",
+  # "mise.local.toml",
+]
+
 [symlink]
-paths = ["mise.local.toml"]
+paths = [
+  # ".claude/settings.local.json",
+  "mise.local.toml",
+]
 
 [run]
-commands = ["mise install"]
+commands = ["mise trust"]
