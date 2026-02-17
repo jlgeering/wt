@@ -1,0 +1,21 @@
+.{
+    .name = .wt,
+    .version = "0.1.0",
+    .fingerprint = 0x76cf48eb058cbd18,
+    .minimum_zig_version = "0.14.0",
+    .dependencies = .{
+        .yazap = .{
+            .url = "git+https://github.com/prajwalch/yazap?ref=v0.6.3#71490491b8f1b0741218160b88cf0a87d2a941ce",
+            .hash = "yazap-0.6.3-Z1t-EiLlAQCR5mUSOlF1PovnwyPcIUGeV02lAIVMUEOc",
+        },
+        .toml = .{
+            .url = "git+https://github.com/sam701/zig-toml?ref=last-zig-0.14.1#d65ed6023e51cafe80ba20af56a3b5d551efd067",
+            .hash = "toml-0.3.0-bV14BVp6AQDWCtjvbZNKxOU6OzBJtDUaLZ5oay1__3wJ",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
