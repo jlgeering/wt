@@ -1,2 +1,58 @@
 [tools]
 zig = "0.14"
+
+[tasks.build]
+description = "Build debug binary for current platform"
+run = "zig build"
+
+[tasks.test]
+description = "Run unit tests"
+run = "zig build test"
+
+[tasks.run]
+description = "Build and run wt with passthrough args"
+run = "zig build run -- {{arg(rest=true)}}"
+
+[tasks."build:release"]
+description = "Build release binary for current platform"
+run = "zig build -Doptimize=ReleaseSafe"
+
+[tasks."build:all"]
+description = "Cross-compile for macOS, Linux, and Windows"
+depends = ["build:mac", "build:linux"]
+run = """
+zig build -Dtarget=x86_64-windows -Doptimize=ReleaseSafe -p dist/x86_64-windows
+"""
+
+[tasks."build:mac"]
+description = "Build for macOS arm64 + x86_64"
+run = """
+zig build -Dtarget=aarch64-macos -Doptimize=ReleaseSafe -p dist/aarch64-macos
+zig build -Dtarget=x86_64-macos -Doptimize=ReleaseSafe -p dist/x86_64-macos
+"""
+
+[tasks."build:linux"]
+description = "Build for Linux x86_64 + aarch64"
+run = """
+zig build -Dtarget=x86_64-linux -Doptimize=ReleaseSafe -p dist/x86_64-linux
+zig build -Dtarget=aarch64-linux -Doptimize=ReleaseSafe -p dist/aarch64-linux
+"""
+
+[tasks.check]
+description = "Run tests and build (pre-commit check)"
+run = """
+zig build test
+zig build
+"""
+
+[tasks.clean]
+description = "Remove build artifacts"
+run = "rm -rf zig-out/ .zig-cache/ dist/"
+
+[tasks.install]
+description = "Build release and install to ~/.local/bin/wt"
+run = """
+zig build -Doptimize=ReleaseSafe
+mkdir -p ~/.local/bin
+cp zig-out/bin/wt ~/.local/bin/wt
+"""
