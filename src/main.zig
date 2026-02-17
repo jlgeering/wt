@@ -4,6 +4,7 @@ const yazap = @import("yazap");
 const list_cmd = @import("commands/list.zig");
 const new_cmd = @import("commands/new.zig");
 const rm_cmd = @import("commands/rm.zig");
+const shell_init_cmd = @import("commands/shell_init.zig");
 
 const App = yazap.App;
 const Arg = yazap.Arg;
@@ -31,6 +32,10 @@ pub fn main() !void {
     try cmd_rm.addArg(Arg.booleanOption("force", 'f', "Force removal even with uncommitted changes"));
     try wt.addSubcommand(cmd_rm);
 
+    var cmd_shell_init = app.createCommand("shell-init", "Output shell integration function");
+    try cmd_shell_init.addArg(Arg.positional("SHELL", "Shell name: zsh, bash", null));
+    try wt.addSubcommand(cmd_shell_init);
+
     const matches = try app.parseProcess();
 
     if (matches.subcommandMatches("list")) |_| {
@@ -46,5 +51,11 @@ pub fn main() !void {
         const branch = rm_matches.getSingleValue("BRANCH");
         const force = rm_matches.containsArg("force");
         try rm_cmd.run(allocator, branch, force);
+    } else if (matches.subcommandMatches("shell-init")) |si_matches| {
+        const shell = si_matches.getSingleValue("SHELL") orelse {
+            std.debug.print("Error: shell name required (zsh, bash)\n", .{});
+            std.process.exit(1);
+        };
+        try shell_init_cmd.run(shell);
     }
 }
