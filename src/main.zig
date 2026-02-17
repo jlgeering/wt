@@ -3,6 +3,7 @@ const yazap = @import("yazap");
 
 const list_cmd = @import("commands/list.zig");
 const new_cmd = @import("commands/new.zig");
+const rm_cmd = @import("commands/rm.zig");
 
 const App = yazap.App;
 const Arg = yazap.Arg;
@@ -25,6 +26,11 @@ pub fn main() !void {
     try cmd_new.addArg(Arg.positional("BASE", "Base ref (default: HEAD)", null));
     try wt.addSubcommand(cmd_new);
 
+    var cmd_rm = app.createCommand("rm", "Remove a worktree");
+    try cmd_rm.addArg(Arg.positional("BRANCH", "Branch name (omit for picker list)", null));
+    try cmd_rm.addArg(Arg.booleanOption("force", 'f', "Force removal even with uncommitted changes"));
+    try wt.addSubcommand(cmd_rm);
+
     const matches = try app.parseProcess();
 
     if (matches.subcommandMatches("list")) |_| {
@@ -36,5 +42,9 @@ pub fn main() !void {
         };
         const base = new_matches.getSingleValue("BASE") orelse "HEAD";
         try new_cmd.run(allocator, branch, base);
+    } else if (matches.subcommandMatches("rm")) |rm_matches| {
+        const branch = rm_matches.getSingleValue("BRANCH");
+        const force = rm_matches.containsArg("force");
+        try rm_cmd.run(allocator, branch, force);
     }
 }
