@@ -1,6 +1,8 @@
 const std = @import("std");
 const yazap = @import("yazap");
 
+const list_cmd = @import("commands/list.zig");
+
 const App = yazap.App;
 
 pub fn main() !void {
@@ -19,6 +21,6 @@ pub fn main() !void {
     const matches = try app.parseProcess();
 
     if (matches.subcommandMatches("list")) |_| {
-        std.debug.print("wt list: not yet implemented\n", .{});
+        try list_cmd.run(allocator);
     }
 }
