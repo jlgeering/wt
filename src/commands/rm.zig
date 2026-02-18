@@ -1,6 +1,16 @@
 const std = @import("std");
 const git = @import("../lib/git.zig");
-const worktree = @import("../lib/worktree.zig");
+
+fn findWorktreeByBranch(worktrees: []const git.WorktreeInfo, branch: []const u8) ?git.WorktreeInfo {
+    for (worktrees, 0..) |wt, idx| {
+        // Never target the main worktree.
+        if (idx == 0) continue;
+
+        const wt_branch = wt.branch orelse continue;
+        if (std.mem.eql(u8, wt_branch, branch)) return wt;
+    }
+    return null;
+}
 
 fn isConfirmedResponse(input: []const u8) bool {
     const trimmed = std.mem.trim(u8, input, " \t\r\n");
@@ -68,9 +78,12 @@ pub fn run(allocator: std.mem.Allocator, branch_arg: ?[]const u8, force: bool) !
         return;
     };
 
-    // Find the worktree for this branch
-    const wt_path = try worktree.computeWorktreePath(allocator, main_path, branch);
-    defer allocator.free(wt_path);
+    // Find the worktree by branch from git's own inventory rather than path convention.
+    const wt_info = findWorktreeByBranch(worktrees, branch) orelse {
+        std.debug.print("Error: no worktree found for branch '{s}'\n", .{branch});
+        std.process.exit(1);
+    };
+    const wt_path = wt_info.path;
 
     // Check it exists
     std.fs.cwd().access(wt_path, .{}) catch {
@@ -144,4 +157,24 @@ pub fn run(allocator: std.mem.Allocator, branch_arg: ?[]const u8, force: bool) !
     allocator.free(del_result);
 
     std.debug.print("Deleted merged branch '{s}'\n", .{branch});
+}
+
+test "findWorktreeByBranch matches branch regardless of path naming" {
+    const worktrees = [_]git.WorktreeInfo{
+        .{ .path = "/tmp/repo", .head = "a", .branch = "main", .is_bare = false },
+        .{ .path = "/tmp/custom/location/feature-tree", .head = "b", .branch = "feat-x", .is_bare = false },
+    };
+
+    const found = findWorktreeByBranch(&worktrees, "feat-x");
+    try std.testing.expect(found != null);
+    try std.testing.expectEqualStrings("/tmp/custom/location/feature-tree", found.?.path);
+}
+
+test "findWorktreeByBranch skips main worktree" {
+    const worktrees = [_]git.WorktreeInfo{
+        .{ .path = "/tmp/repo", .head = "a", .branch = "main", .is_bare = false },
+    };
+
+    const found = findWorktreeByBranch(&worktrees, "main");
+    try std.testing.expect(found == null);
 }
