@@ -1,12 +1,30 @@
 const std = @import("std");
 
+fn resolveGitSha(b: *std.Build) []const u8 {
+    var code: u8 = 0;
+    const output = b.runAllowFail(&.{ "git", "rev-parse", "--short", "HEAD" }, &code, .Ignore) catch {
+        return "unknown";
+    };
+    defer b.allocator.free(output);
+
+    const trimmed = std.mem.trim(u8, output, " \t\r\n");
+    if (trimmed.len == 0) return "unknown";
+
+    return b.allocator.dupe(u8, trimmed) catch "unknown";
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const app_version = b.option([]const u8, "app_version", "Application version string") orelse "0.1.0";
+    const git_sha = resolveGitSha(b);
 
     // Dependencies
     const yazap_dep = b.dependency("yazap", .{});
     const toml_dep = b.dependency("toml", .{});
+    const build_options = b.addOptions();
+    build_options.addOption([]const u8, "version", app_version);
+    build_options.addOption([]const u8, "git_sha", git_sha);
 
     // Executable
     const exe = b.addExecutable(.{
@@ -17,6 +35,7 @@ pub fn build(b: *std.Build) void {
     });
     exe.root_module.addImport("yazap", yazap_dep.module("yazap"));
     exe.root_module.addImport("toml", toml_dep.module("toml"));
+    exe.root_module.addOptions("build_options", build_options);
     b.installArtifact(exe);
 
     // Run step

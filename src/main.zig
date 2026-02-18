@@ -1,5 +1,6 @@
 const std = @import("std");
 const yazap = @import("yazap");
+const build_options = @import("build_options");
 
 const list_cmd = @import("commands/list.zig");
 const new_cmd = @import("commands/new.zig");
@@ -19,6 +20,7 @@ pub fn main() !void {
 
     var wt = app.rootCommand();
     wt.setProperty(.help_on_empty_args);
+    try wt.addArg(Arg.booleanOption("version", 'V', "Print version and exit"));
 
     try wt.addSubcommand(app.createCommand("list", "List all worktrees"));
 
@@ -37,6 +39,10 @@ pub fn main() !void {
     try wt.addSubcommand(cmd_shell_init);
 
     const matches = try app.parseProcess();
+    if (matches.containsArg("version")) {
+        std.debug.print("wt {s} ({s})\n", .{ build_options.version, build_options.git_sha });
+        return;
+    }
 
     if (matches.subcommandMatches("list")) |_| {
         try list_cmd.run(allocator);

@@ -90,6 +90,7 @@ After `wt new demo-branch`, `pwd` should show the new worktree directory.
 wt list
 wt new <branch> [base]
 wt rm [branch] [-f|--force]
+wt --version
 wt shell-init <shell>
 ```
 
