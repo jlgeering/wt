@@ -34,6 +34,38 @@ pub fn build(b: *std.Build) void {
     });
     lib_tests.root_module.addImport("toml", toml_dep.module("toml"));
     const run_lib_tests = b.addRunArtifact(lib_tests);
-    const test_step = b.step("test", "Run unit tests");
+    const test_step = b.step("test", "Run unit and integration tests");
     test_step.dependOn(&run_lib_tests.step);
+
+    const integration_lib_tests = b.addTest(.{
+        .root_source_file = b.path("test/integration_lib.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const lib_module = b.createModule(.{
+        .root_source_file = b.path("src/lib/root.zig"),
+    });
+    lib_module.addImport("toml", toml_dep.module("toml"));
+    integration_lib_tests.root_module.addImport("wt_lib", lib_module);
+    integration_lib_tests.root_module.addImport("toml", toml_dep.module("toml"));
+    const run_integration_lib_tests = b.addRunArtifact(integration_lib_tests);
+    test_step.dependOn(&run_integration_lib_tests.step);
+
+    const integration_workflow_tests = b.addTest(.{
+        .root_source_file = b.path("test/integration_workflow.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const workflow_lib_module = b.createModule(.{
+        .root_source_file = b.path("src/lib/root.zig"),
+    });
+    workflow_lib_module.addImport("toml", toml_dep.module("toml"));
+    integration_workflow_tests.root_module.addImport("wt_lib", workflow_lib_module);
+    integration_workflow_tests.root_module.addImport("toml", toml_dep.module("toml"));
+    const run_integration_workflow_tests = b.addRunArtifact(integration_workflow_tests);
+    test_step.dependOn(&run_integration_workflow_tests.step);
+
+    const integration_step = b.step("test-integration", "Run integration tests");
+    integration_step.dependOn(&run_integration_lib_tests.step);
+    integration_step.dependOn(&run_integration_workflow_tests.step);
 }
