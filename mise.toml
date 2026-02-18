@@ -56,3 +56,20 @@ zig build -Doptimize=ReleaseSafe
 mkdir -p ~/.local/bin
 cp zig-out/bin/wt ~/.local/bin/wt
 """
+
+[tasks."beads:export"]
+description = "Export beads issues to .beads/issues.jsonl"
+run = """
+mkdir -p .beads
+bd export -o .beads/issues.jsonl
+"""
+
+[tasks."beads:import"]
+description = "Import beads issues from .beads/issues.jsonl"
+run = """
+if [ ! -f .beads/issues.jsonl ]; then
+  echo "Missing .beads/issues.jsonl" >&2
+  exit 1
+fi
+bd import .beads/issues.jsonl
+"""
