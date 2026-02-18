@@ -1,5 +1,4 @@
 [tools]
-"github:vercel-labs/agent-browser" = "latest"
 zig = "0.14"
 
 [tasks.build]
@@ -20,10 +19,11 @@ run = "zig build -Doptimize=ReleaseSafe"
 
 [tasks."build:all"]
 description = "Cross-compile for macOS, Linux, and Windows"
-depends = ["build:mac", "build:linux"]
-run = """
-zig build -Dtarget=x86_64-windows -Doptimize=ReleaseSafe -p dist/x86_64-windows
-"""
+depends = ["build:mac", "build:linux", "build:windows"]
+
+[tasks."build:windows"]
+description = "Build for Windows x86_64"
+run = "zig build -Dtarget=x86_64-windows -Doptimize=ReleaseSafe -p dist/x86_64-windows"
 
 [tasks."build:mac"]
 description = "Build for macOS arm64 + x86_64"
@@ -41,10 +41,7 @@ zig build -Dtarget=aarch64-linux -Doptimize=ReleaseSafe -p dist/aarch64-linux
 
 [tasks.check]
 description = "Run tests and build (pre-commit check)"
-run = """
-zig build test
-zig build
-"""
+depends = ["test", "build"]
 
 [tasks.clean]
 description = "Remove build artifacts"
@@ -52,8 +49,8 @@ run = "rm -rf zig-out/ .zig-cache/ dist/"
 
 [tasks.install]
 description = "Build release and install to ~/.local/bin/wt"
+depends = ["build:release"]
 run = """
-zig build -Doptimize=ReleaseSafe
 mkdir -p ~/.local/bin
 cp zig-out/bin/wt ~/.local/bin/wt
 """
