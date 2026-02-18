@@ -6,6 +6,7 @@ const list_cmd = @import("commands/list.zig");
 const new_cmd = @import("commands/new.zig");
 const rm_cmd = @import("commands/rm.zig");
 const shell_init_cmd = @import("commands/shell_init.zig");
+const init_cmd = @import("commands/init.zig");
 
 const App = yazap.App;
 const Arg = yazap.Arg;
@@ -38,6 +39,8 @@ pub fn main() !void {
     try cmd_shell_init.addArg(Arg.positional("SHELL", "Shell name: zsh, bash", null));
     try wt.addSubcommand(cmd_shell_init);
 
+    try wt.addSubcommand(app.createCommand("init", "Create or upgrade .wt.toml with guided recommendations"));
+
     const matches = try app.parseProcess();
     if (matches.containsArg("version")) {
         std.debug.print("wt {s} ({s})\n", .{ build_options.version, build_options.git_sha });
@@ -63,5 +66,7 @@ pub fn main() !void {
             std.process.exit(1);
         };
         try shell_init_cmd.run(shell);
+    } else if (matches.subcommandMatches("init")) |_| {
+        try init_cmd.run(allocator);
     }
 }

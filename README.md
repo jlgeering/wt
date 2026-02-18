@@ -90,11 +90,43 @@ After `wt new demo-branch`, `pwd` should show the new worktree directory.
 wt list
 wt new <branch> [base]
 wt rm [branch] [-f|--force]
+wt init
 wt --version
 wt shell-init <shell>
 ```
 
 Supported shells for `shell-init` are `zsh` and `bash`. This README documents zsh integration as the primary workflow.
+
+## Guided config bootstrap (`wt init`)
+
+`wt init` creates `.wt.toml` if missing and can be run repeatedly to upgrade an existing config with current recommendations.
+
+Behavior:
+
+- Scans the repo for common local files and proposes `copy`, `symlink`, and `run` entries.
+- Asks for confirmation for each recommendation (add or keep/remove on re-runs).
+- Detects anti-patterns and proposes cleanup.
+- Shows a change summary before writing.
+- If `.wt.toml` already exists, writes a timestamped backup before updating.
+
+Built-in recommendation patterns currently include:
+
+- `mise.local.toml`, `.mise.local.toml`, and other `mise*local*.toml` variants
+- `.claude/settings.local.json`
+- `.env.local` and `.env.*.local`
+- `.vscode/settings.local.json`
+- `.envrc` (symlink recommendation)
+
+Built-in command recommendations currently include:
+
+- `mise trust` (when local mise variants are detected)
+- `direnv allow` (when `.envrc` is detected)
+
+Built-in anti-pattern checks include:
+
+- paths present in both `[copy].paths` and `[symlink].paths`
+- discouraged copy targets: `.git`, `.beads`, `node_modules`, `.zig-cache`, `zig-out`
+- destructive run commands such as `rm -rf` and `git reset --hard`
 
 ## .wt.toml setup config
 

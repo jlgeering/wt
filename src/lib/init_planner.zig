@@ -166,7 +166,9 @@ pub const EditableConfig = struct {
 
 pub fn discoverRecommendations(allocator: std.mem.Allocator, repo_root: []const u8) ![]Recommendation {
     var recs = std.ArrayList(Recommendation).init(allocator);
-    errdefer freeRecommendations(allocator, recs.items);
+    errdefer {
+        for (recs.items) |rec| allocator.free(rec.value);
+    }
     defer recs.deinit();
 
     const root_entries = try readRootEntries(allocator, repo_root);
@@ -206,7 +208,9 @@ pub fn discoverRecommendations(allocator: std.mem.Allocator, repo_root: []const 
 
 pub fn detectAntiPatterns(allocator: std.mem.Allocator, cfg: *const EditableConfig) ![]AntiPattern {
     var findings = std.ArrayList(AntiPattern).init(allocator);
-    errdefer freeAntiPatterns(allocator, findings.items);
+    errdefer {
+        for (findings.items) |finding| allocator.free(finding.value);
+    }
     defer findings.deinit();
 
     for (cfg.copy_paths.items) |copy_path| {
@@ -253,7 +257,9 @@ pub fn detectAntiPatterns(allocator: std.mem.Allocator, cfg: *const EditableConf
 
 pub fn diffConfigs(allocator: std.mem.Allocator, before: *const EditableConfig, after: *const EditableConfig) ![]Change {
     var changes = std.ArrayList(Change).init(allocator);
-    errdefer freeChanges(allocator, changes.items);
+    errdefer {
+        for (changes.items) |change| allocator.free(change.value);
+    }
     defer changes.deinit();
 
     const sections = [_]Section{ .copy, .symlink, .run };
@@ -315,7 +321,7 @@ fn freeList(allocator: std.mem.Allocator, list: *std.ArrayList([]u8)) void {
 
 fn readRootEntries(allocator: std.mem.Allocator, repo_root: []const u8) ![]([]u8) {
     var entries = std.ArrayList([]u8).init(allocator);
-    errdefer freeStringSlice(allocator, entries.items);
+    errdefer freeStringItems(allocator, entries.items);
     defer entries.deinit();
 
     var dir = try std.fs.cwd().openDir(repo_root, .{ .iterate = true });
@@ -471,7 +477,7 @@ fn writeTomlString(writer: anytype, value: []const u8) !void {
 
 fn cloneSortedStrings(allocator: std.mem.Allocator, items: []const []u8) ![]([]u8) {
     var cloned = std.ArrayList([]u8).init(allocator);
-    errdefer freeStringSlice(allocator, cloned.items);
+    errdefer freeStringItems(allocator, cloned.items);
     defer cloned.deinit();
 
     for (items) |item| {
@@ -497,6 +503,10 @@ fn insertionSortStrings(items: []([]u8)) void {
 fn freeStringSlice(allocator: std.mem.Allocator, items: []([]u8)) void {
     for (items) |item| allocator.free(item);
     allocator.free(items);
+}
+
+fn freeStringItems(allocator: std.mem.Allocator, items: []([]u8)) void {
+    for (items) |item| allocator.free(item);
 }
 
 test "EditableConfig add remove and render" {
@@ -546,4 +556,33 @@ test "diffConfigs reports added and removed values" {
     defer freeChanges(std.testing.allocator, changes);
 
     try std.testing.expectEqual(@as(usize, 2), changes.len);
+}
+
+test "discoverRecommendations finds file and command suggestions" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{ .sub_path = "mise.local.toml", .data = "trust = true\n" });
+    try tmp.dir.makePath(".claude");
+    try tmp.dir.writeFile(.{ .sub_path = ".claude/settings.local.json", .data = "{ }\n" });
+
+    const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+
+    const recs = try discoverRecommendations(std.testing.allocator, root);
+    defer freeRecommendations(std.testing.allocator, recs);
+
+    var saw_copy_mise = false;
+    var saw_copy_claude = false;
+    var saw_mise_trust = false;
+
+    for (recs) |rec| {
+        if (rec.section == .copy and std.mem.eql(u8, rec.value, "mise.local.toml")) saw_copy_mise = true;
+        if (rec.section == .copy and std.mem.eql(u8, rec.value, ".claude/settings.local.json")) saw_copy_claude = true;
+        if (rec.section == .run and std.mem.eql(u8, rec.value, "mise trust")) saw_mise_trust = true;
+    }
+
+    try std.testing.expect(saw_copy_mise);
+    try std.testing.expect(saw_copy_claude);
+    try std.testing.expect(saw_mise_trust);
 }
