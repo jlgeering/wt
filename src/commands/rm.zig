@@ -2,6 +2,34 @@ const std = @import("std");
 const git = @import("../lib/git.zig");
 const worktree = @import("../lib/worktree.zig");
 
+fn isConfirmedResponse(input: []const u8) bool {
+    const trimmed = std.mem.trim(u8, input, " \t\r\n");
+    return std.ascii.eqlIgnoreCase(trimmed, "y") or std.ascii.eqlIgnoreCase(trimmed, "yes");
+}
+
+fn confirmUnsafeRemoval(
+    stdout: anytype,
+    stdin: anytype,
+    branch: []const u8,
+    modified: usize,
+    untracked: usize,
+    unmerged_commits: usize,
+) !bool {
+    try stdout.print("Warning: unsafe worktree removal for branch '{s}'\n", .{branch});
+    if (modified > 0 or untracked > 0) {
+        try stdout.print("- dirty worktree: {d} modified, {d} untracked\n", .{ modified, untracked });
+    }
+    if (unmerged_commits > 0) {
+        try stdout.print("- branch has {d} unmerged commit(s) vs HEAD\n", .{unmerged_commits});
+    }
+    try stdout.print("Remove anyway? [y/N]: ", .{});
+
+    var response_buf: [16]u8 = undefined;
+    const response = try stdin.readUntilDelimiterOrEof(&response_buf, '\n');
+    if (response == null) return false;
+    return isConfirmedResponse(response.?);
+}
+
 pub fn run(allocator: std.mem.Allocator, branch_arg: ?[]const u8, force: bool) !void {
     const stdout = std.io.getStdOut().writer();
 
@@ -50,7 +78,7 @@ pub fn run(allocator: std.mem.Allocator, branch_arg: ?[]const u8, force: bool) !
         std.process.exit(1);
     };
 
-    // Safety check: uncommitted changes
+    // Safety check: dirty files and unmerged commits
     if (!force) {
         const status_output = git.runGit(allocator, wt_path, &.{ "status", "--porcelain" }) catch {
             std.debug.print("Warning: could not check worktree status\n", .{});
@@ -59,10 +87,35 @@ pub fn run(allocator: std.mem.Allocator, branch_arg: ?[]const u8, force: bool) !
         defer allocator.free(status_output);
 
         const status = git.parseStatusPorcelain(status_output);
-        if (status.modified > 0 or status.untracked > 0) {
-            std.debug.print("Error: worktree has {d} modified and {d} untracked files\n", .{ status.modified, status.untracked });
-            std.debug.print("Use --force to remove anyway\n", .{});
+        const unmerged_commits = git.countUnmergedCommits(allocator, main_path, "HEAD", branch) catch {
+            std.debug.print("Warning: could not check branch merge status\n", .{});
             std.process.exit(1);
+        };
+
+        const unsafe_to_remove = status.modified > 0 or status.untracked > 0 or unmerged_commits > 0;
+        if (unsafe_to_remove) {
+            if (!std.io.getStdIn().isTty()) {
+                std.debug.print("Error: worktree removal is unsafe and requires confirmation\n", .{});
+                std.debug.print("Use --force to remove anyway\n", .{});
+                std.process.exit(1);
+            }
+
+            const confirmed = confirmUnsafeRemoval(
+                stdout,
+                std.io.getStdIn().reader(),
+                branch,
+                status.modified,
+                status.untracked,
+                unmerged_commits,
+            ) catch {
+                std.debug.print("Error: failed to read confirmation\n", .{});
+                std.process.exit(1);
+            };
+
+            if (!confirmed) {
+                std.debug.print("Aborted\n", .{});
+                std.process.exit(1);
+            }
         }
     }
 

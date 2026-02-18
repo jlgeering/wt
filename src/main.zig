@@ -29,7 +29,7 @@ pub fn main() !void {
 
     var cmd_rm = app.createCommand("rm", "Remove a worktree");
     try cmd_rm.addArg(Arg.positional("BRANCH", "Branch name (omit for picker list)", null));
-    try cmd_rm.addArg(Arg.booleanOption("force", 'f', "Force removal even with uncommitted changes"));
+    try cmd_rm.addArg(Arg.booleanOption("force", 'f', "Force removal without safety confirmation (dirty/unmerged)"));
     try wt.addSubcommand(cmd_rm);
 
     var cmd_shell_init = app.createCommand("shell-init", "Output shell integration function");

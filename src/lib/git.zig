@@ -12,6 +12,13 @@ pub const WorktreeStatus = struct {
     untracked: usize,
 };
 
+/// Parse integer output from git commands like `rev-list --count`.
+pub fn parseCountOutput(output: []const u8) !usize {
+    const trimmed = std.mem.trim(u8, output, " \t\r\n");
+    if (trimmed.len == 0) return 0;
+    return std.fmt.parseInt(usize, trimmed, 10);
+}
+
 /// Parse output of `git worktree list --porcelain` into WorktreeInfo structs.
 /// Returned slice is owned by caller. Strings point into the input buffer.
 pub fn parseWorktreeList(allocator: std.mem.Allocator, output: []const u8) ![]WorktreeInfo {
@@ -68,6 +75,22 @@ pub fn parseStatusPorcelain(output: []const u8) WorktreeStatus {
     }
 
     return .{ .modified = modified, .untracked = untracked };
+}
+
+/// Count commits reachable from `branch_ref` but not from `base_ref`.
+pub fn countUnmergedCommits(
+    allocator: std.mem.Allocator,
+    cwd: ?[]const u8,
+    base_ref: []const u8,
+    branch_ref: []const u8,
+) !usize {
+    const range = try std.fmt.allocPrint(allocator, "{s}..{s}", .{ base_ref, branch_ref });
+    defer allocator.free(range);
+
+    const output = try runGit(allocator, cwd, &.{ "rev-list", "--count", range });
+    defer allocator.free(output);
+
+    return parseCountOutput(output);
 }
 
 /// Run a git command and return stdout. Caller owns returned memory.
@@ -171,4 +194,14 @@ test "parseStatusPorcelain handles empty output" {
     const status = parseStatusPorcelain("");
     try std.testing.expectEqual(@as(usize, 0), status.modified);
     try std.testing.expectEqual(@as(usize, 0), status.untracked);
+}
+
+test "parseCountOutput parses newline-terminated number" {
+    const count = try parseCountOutput("12\n");
+    try std.testing.expectEqual(@as(usize, 12), count);
+}
+
+test "parseCountOutput treats empty output as zero" {
+    const count = try parseCountOutput(" \n");
+    try std.testing.expectEqual(@as(usize, 0), count);
 }
