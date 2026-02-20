@@ -71,9 +71,15 @@ source ~/.zshrc
 Behavior:
 
 - The wrapper intercepts `wt new ...`.
-- It captures `wt new` stdout (the created worktree path).
+- It calls `wt new --porcelain ...` and captures stdout (the created worktree path).
 - If `wt new` exits successfully and the output is an existing directory, it runs `cd "$output"`.
+- After changing directories, it prints `Entered worktree: <path>`.
 - All other subcommands are passed through unchanged via `command wt "$@"`.
+
+Notes:
+
+- The wrapper function is intentionally named `wt`, the same as the binary.
+- Inside the function, `command wt` bypasses the function and invokes the real binary.
 
 Quick verification:
 
@@ -88,7 +94,7 @@ After `wt new demo-branch`, `pwd` should show the new worktree directory.
 
 ```bash
 wt list
-wt new <branch> [base]
+wt new [--porcelain] <branch> [base]
 wt rm [branch] [-f|--force]
 wt init
 wt --version
@@ -96,6 +102,11 @@ wt shell-init <shell>
 ```
 
 Supported shells for `shell-init` are `zsh` and `bash`. This README documents zsh integration as the primary workflow.
+
+`wt new` output modes:
+
+- Default mode (human): prints status messages to stderr and does not print the raw path on stdout.
+- `--porcelain` mode (machine): prints exactly the worktree path to stdout.
 
 ## Guided config bootstrap (`wt init`)
 
@@ -169,6 +180,10 @@ Setup semantics:
   - Run `type wt` and confirm `wt` is a shell function.
   - Re-run `source ~/.zshrc`.
   - Confirm your function includes `eval "$(wt shell-init zsh)"`.
+- Unsure whether function or binary is running:
+  - Run `type wt`.
+  - If it says `wt is a function`, the wrapper is active.
+  - If it says `wt is /.../wt`, you are calling the binary directly.
 
 ## Testing
 
