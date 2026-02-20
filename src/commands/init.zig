@@ -30,6 +30,11 @@ fn isNegativeResponse(input: []const u8) bool {
     return std.ascii.eqlIgnoreCase(trimmed, "n") or std.ascii.eqlIgnoreCase(trimmed, "no");
 }
 
+// Keep one blank line between interactive "screens" so transitions are easier to scan.
+fn printScreenBreak(stdout: anytype) !void {
+    try stdout.writeAll("\n");
+}
+
 fn tryReadSingleKey(stdin_file: std.fs.File) !?u8 {
     if (builtin.os.tag == .windows) return null;
     if (!stdin_file.isTty()) return null;
@@ -130,6 +135,7 @@ fn promptApplyDecision(stdout: anytype, stdin_file: std.fs.File) !ApplyDecision 
 
 fn promptDeclineDecision(stdout: anytype, stdin_file: std.fs.File) !DeclineDecision {
     while (true) {
+        try printScreenBreak(stdout);
         try stdout.writeAll("Choose next step:\n");
         try stdout.writeAll("  [e] Edit proposed changes one by one\n");
         try stdout.writeAll("  [q] Quit without writing\n");
@@ -332,12 +338,14 @@ pub fn run(allocator: std.mem.Allocator) !void {
             const decline = try promptDeclineDecision(stdout, stdin_file);
             switch (decline) {
                 .quit => {
+                    try printScreenBreak(stdout);
                     try stdout.writeAll("No changes written.\n");
                     return;
                 },
                 .review => {},
             }
 
+            try printScreenBreak(stdout);
             try stdout.writeAll("Review mode: Enter keeps, n skips.\n");
             for (changes) |change| {
                 const marker: []const u8 = switch (change.kind) {

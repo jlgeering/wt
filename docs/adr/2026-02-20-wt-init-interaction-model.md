@@ -34,6 +34,7 @@ We also needed anti-pattern output to be useful without noisy always-on text.
 7. Use color only when appropriate:
    - auto-enable on TTY
    - disable with `NO_COLOR`
+8. Keep one blank line between interactive "screens" (summary, follow-up menu, review mode, final outcome) for readability.
 
 ## Consequences
 
@@ -48,4 +49,3 @@ We also needed anti-pattern output to be useful without noisy always-on text.
 - USWDS modal/button clarity guidance: https://designsystem.digital.gov/components/modal/
 - Canonical vs non-canonical terminal mode: https://www.gnu.org/software/libc/manual/html_node/Canonical-or-Not.html
 - NO_COLOR convention: https://no-color.org/
-
