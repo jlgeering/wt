@@ -12,6 +12,11 @@ pub const Recommendation = struct {
     reason: []const u8,
 };
 
+pub const DiscoveryOptions = struct {
+    // For tests and deterministic callers. Null means detect from `mise trust --show`.
+    assume_repo_mise_trusted: ?bool = null,
+};
+
 pub const AntiPattern = struct {
     section: Section,
     value: []u8,
@@ -165,6 +170,14 @@ pub const EditableConfig = struct {
 };
 
 pub fn discoverRecommendations(allocator: std.mem.Allocator, repo_root: []const u8) ![]Recommendation {
+    return discoverRecommendationsWithOptions(allocator, repo_root, .{});
+}
+
+pub fn discoverRecommendationsWithOptions(
+    allocator: std.mem.Allocator,
+    repo_root: []const u8,
+    options: DiscoveryOptions,
+) ![]Recommendation {
     var recs = std.ArrayList(Recommendation).init(allocator);
     errdefer {
         for (recs.items) |rec| allocator.free(rec.value);
@@ -184,15 +197,18 @@ pub fn discoverRecommendations(allocator: std.mem.Allocator, repo_root: []const 
         }
     }
 
+    var repo_mise_trusted = options.assume_repo_mise_trusted;
     for (init_rules.command_rules) |rule| {
-        var triggered = false;
-        for (rule.trigger_rule_ids) |id| {
-            if (triggered_rule_ids.contains(id)) {
-                triggered = true;
-                break;
+        const triggered_by_rules = isCommandRuleTriggeredByRules(&triggered_rule_ids, rule);
+        const triggered_by_patterns = isCommandRuleTriggeredByPatterns(root_entries, rule);
+        if (!triggered_by_rules and !triggered_by_patterns) continue;
+
+        if (rule.requires_repo_mise_trust) {
+            if (repo_mise_trusted == null) {
+                repo_mise_trusted = detectRepoMiseTrust(allocator, repo_root) catch false;
             }
+            if (!(repo_mise_trusted orelse false)) continue;
         }
-        if (!triggered) continue;
 
         _ = try addRecommendationIfMissing(allocator, &recs, .{
             .rule_id = rule.id,
@@ -204,6 +220,69 @@ pub fn discoverRecommendations(allocator: std.mem.Allocator, repo_root: []const 
     }
 
     return recs.toOwnedSlice();
+}
+
+fn isCommandRuleTriggeredByRules(
+    triggered_rule_ids: *const std.StringHashMap(void),
+    rule: init_rules.CommandRule,
+) bool {
+    for (rule.trigger_rule_ids) |id| {
+        if (triggered_rule_ids.contains(id)) return true;
+    }
+    return false;
+}
+
+fn isCommandRuleTriggeredByPatterns(root_entries: []([]u8), rule: init_rules.CommandRule) bool {
+    for (rule.trigger_patterns) |pattern| {
+        if (std.mem.indexOfScalar(u8, pattern.value, '/')) |_| {
+            continue;
+        }
+
+        for (root_entries) |entry_name| {
+            if (init_rules.matchesPattern(pattern, entry_name)) return true;
+        }
+    }
+    return false;
+}
+
+fn detectRepoMiseTrust(allocator: std.mem.Allocator, repo_root: []const u8) !bool {
+    const result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "mise", "trust", "--show" },
+        .cwd = repo_root,
+    }) catch {
+        return error.MiseNotFound;
+    };
+    defer allocator.free(result.stderr);
+    defer allocator.free(result.stdout);
+
+    switch (result.term) {
+        .Exited => |code| {
+            if (code != 0) return error.MiseCommandFailed;
+        },
+        else => return error.MiseCommandFailed,
+    }
+
+    return parseMiseTrustShowOutput(result.stdout) orelse false;
+}
+
+fn parseMiseTrustShowOutput(output: []const u8) ?bool {
+    var lines = std.mem.splitScalar(u8, output, '\n');
+    var last_non_empty: ?[]const u8 = null;
+    while (lines.next()) |line| {
+        if (std.mem.trim(u8, line, " \t\r\n").len > 0) {
+            last_non_empty = line;
+        }
+    }
+
+    const line = last_non_empty orelse return null;
+    const separator_index = std.mem.lastIndexOf(u8, line, ":") orelse return null;
+    const status = std.mem.trim(u8, line[separator_index + 1 ..], " \t\r\n");
+
+    if (std.ascii.eqlIgnoreCase(status, "trusted")) return true;
+    if (std.ascii.eqlIgnoreCase(status, "untrusted")) return false;
+    if (std.ascii.eqlIgnoreCase(status, "ignored")) return false;
+    return null;
 }
 
 pub fn detectAntiPatterns(allocator: std.mem.Allocator, cfg: *const EditableConfig) ![]AntiPattern {
@@ -569,7 +648,9 @@ test "discoverRecommendations finds file and command suggestions" {
     const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
     defer std.testing.allocator.free(root);
 
-    const recs = try discoverRecommendations(std.testing.allocator, root);
+    const recs = try discoverRecommendationsWithOptions(std.testing.allocator, root, .{
+        .assume_repo_mise_trusted = true,
+    });
     defer freeRecommendations(std.testing.allocator, recs);
 
     var saw_copy_mise = false;
@@ -585,4 +666,64 @@ test "discoverRecommendations finds file and command suggestions" {
     try std.testing.expect(saw_copy_mise);
     try std.testing.expect(saw_copy_claude);
     try std.testing.expect(saw_mise_trust);
+}
+
+test "discoverRecommendations omits mise trust when repo is not trusted" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{ .sub_path = "mise.toml", .data = "[tools]\nzig = \"0.14\"\n" });
+
+    const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+
+    const recs = try discoverRecommendationsWithOptions(std.testing.allocator, root, .{
+        .assume_repo_mise_trusted = false,
+    });
+    defer freeRecommendations(std.testing.allocator, recs);
+
+    for (recs) |rec| {
+        try std.testing.expect(!(rec.section == .run and std.mem.eql(u8, rec.value, "mise trust")));
+    }
+}
+
+test "discoverRecommendations includes mise trust when mise.toml exists and repo is trusted" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{ .sub_path = "mise.toml", .data = "[tools]\nzig = \"0.14\"\n" });
+
+    const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+
+    const recs = try discoverRecommendationsWithOptions(std.testing.allocator, root, .{
+        .assume_repo_mise_trusted = true,
+    });
+    defer freeRecommendations(std.testing.allocator, recs);
+
+    var saw_mise_trust = false;
+    for (recs) |rec| {
+        if (rec.section == .run and std.mem.eql(u8, rec.value, "mise trust")) {
+            saw_mise_trust = true;
+        }
+    }
+
+    try std.testing.expect(saw_mise_trust);
+}
+
+test "parseMiseTrustShowOutput parses trusted and untrusted states" {
+    try std.testing.expectEqual(@as(?bool, true), parseMiseTrustShowOutput(
+        \\~/src: trusted
+        \\~/src/wt: trusted
+        \\
+    ));
+    try std.testing.expectEqual(@as(?bool, false), parseMiseTrustShowOutput(
+        \\~/src: trusted
+        \\~/src/wt: untrusted
+        \\
+    ));
+    try std.testing.expectEqual(@as(?bool, null), parseMiseTrustShowOutput(
+        \\no-separator-here
+        \\
+    ));
 }

@@ -103,10 +103,13 @@ Supported shells for `shell-init` are `zsh` and `bash`. This README documents zs
 
 Behavior:
 
-- Scans the repo for common local files and proposes `copy`, `symlink`, and `run` entries.
-- Asks for confirmation for each recommendation (add or keep/remove on re-runs).
-- Detects anti-patterns and proposes cleanup.
-- Shows a change summary before writing.
+- Scans the repo for common local files and builds a full proposal for `copy`, `symlink`, and `run` entries.
+- Keeps already-matching recommendations automatically on re-runs.
+- Includes anti-pattern cleanup removals in the proposal.
+- Shows anti-pattern warnings only when anti-patterns are actually detected.
+- Shows one change summary and prompts once (`Enter` to apply all, `n`/`Esc` to cancel, `r` for review mode).
+- In review mode, each proposed change defaults to keep on `Enter`.
+- Uses color when stdout is a TTY; set `NO_COLOR=1` to disable.
 - If `.wt.toml` already exists, writes a timestamped backup before updating.
 
 Built-in recommendation patterns currently include:
@@ -119,7 +122,7 @@ Built-in recommendation patterns currently include:
 
 Built-in command recommendations currently include:
 
-- `mise trust` (when local mise variants are detected)
+- `mise trust` (when mise config is detected and the current repo directory is already trusted)
 - `direnv allow` (when `.envrc` is detected)
 
 Built-in anti-pattern checks include:

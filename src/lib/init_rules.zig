@@ -32,6 +32,8 @@ pub const CommandRule = struct {
     reason: []const u8,
     command: []const u8,
     trigger_rule_ids: []const []const u8,
+    trigger_patterns: []const Pattern = &.{},
+    requires_repo_mise_trust: bool = false,
 };
 
 pub const AntiPatternPathRule = struct {
@@ -101,9 +103,14 @@ pub const command_rules = [_]CommandRule{
     .{
         .id = "mise-trust",
         .prompt = "Run mise trust after creating a worktree",
-        .reason = "mise local config files need trust in each new worktree.",
+        .reason = "mise config files need trust in each new worktree.",
         .command = "mise trust",
         .trigger_rule_ids = &.{"mise-local-file"},
+        .trigger_patterns = &.{
+            .{ .kind = .exact, .value = "mise.toml" },
+            .{ .kind = .exact, .value = ".mise.toml" },
+        },
+        .requires_repo_mise_trust = true,
     },
     .{
         .id = "direnv-allow",
