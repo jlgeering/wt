@@ -8,10 +8,11 @@ const zsh_init =
     \\    case "$1" in
     \\        new)
     \\            local output
-    \\            output=$(command wt new "${@:2}" 2>/dev/tty)
+    \\            output=$(command wt new --porcelain "${@:2}" 2>/dev/tty)
     \\            local exit_code=$?
     \\            if [ $exit_code -eq 0 ] && [ -n "$output" ] && [ -d "$output" ]; then
     \\                cd "$output"
+    \\                echo "Entered worktree: $output"
     \\            fi
     \\            return $exit_code
     \\            ;;
@@ -30,10 +31,11 @@ const bash_init =
     \\    case "$1" in
     \\        new)
     \\            local output
-    \\            output=$(command wt new "${@:2}" 2>/dev/tty)
+    \\            output=$(command wt new --porcelain "${@:2}" 2>/dev/tty)
     \\            local exit_code=$?
     \\            if [ $exit_code -eq 0 ] && [ -n "$output" ] && [ -d "$output" ]; then
     \\                cd "$output"
+    \\                echo "Entered worktree: $output"
     \\            fi
     \\            return $exit_code
     \\            ;;
