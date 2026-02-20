@@ -1,12 +1,17 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const git = @import("../lib/git.zig");
 const config = @import("../lib/config.zig");
 const init_planner = @import("../lib/init_planner.zig");
 
 const ApplyDecision = enum {
     apply_all,
+    decline,
+};
+
+const DeclineDecision = enum {
     review,
-    cancel,
+    quit,
 };
 
 const ansi_reset = "\x1b[0m";
@@ -20,19 +25,33 @@ fn isConfirmedResponse(input: []const u8) bool {
     return std.ascii.eqlIgnoreCase(trimmed, "y") or std.ascii.eqlIgnoreCase(trimmed, "yes");
 }
 
-fn isEscapeResponse(input: []const u8) bool {
-    const trimmed = std.mem.trim(u8, input, " \t\r\n");
-    return trimmed.len == 1 and trimmed[0] == 0x1b;
-}
-
 fn isNegativeResponse(input: []const u8) bool {
     const trimmed = std.mem.trim(u8, input, " \t\r\n");
-    return std.ascii.eqlIgnoreCase(trimmed, "n") or std.ascii.eqlIgnoreCase(trimmed, "no") or isEscapeResponse(trimmed);
+    return std.ascii.eqlIgnoreCase(trimmed, "n") or std.ascii.eqlIgnoreCase(trimmed, "no");
+}
+
+fn tryReadSingleKey(stdin_file: std.fs.File) !?u8 {
+    if (builtin.os.tag == .windows) return null;
+    if (!stdin_file.isTty()) return null;
+
+    const original_termios = std.posix.tcgetattr(stdin_file.handle) catch return null;
+    var raw_termios = original_termios;
+    raw_termios.lflag.ICANON = false;
+    raw_termios.lflag.ECHO = false;
+    raw_termios.cc[@intFromEnum(std.c.V.MIN)] = 1;
+    raw_termios.cc[@intFromEnum(std.c.V.TIME)] = 0;
+    std.posix.tcsetattr(stdin_file.handle, .NOW, raw_termios) catch return null;
+    defer std.posix.tcsetattr(stdin_file.handle, .NOW, original_termios) catch {};
+
+    var buf: [1]u8 = undefined;
+    const read_len = std.posix.read(stdin_file.handle, &buf) catch return null;
+    if (read_len == 0) return null;
+    return buf[0];
 }
 
 fn promptYesNo(
     stdout: anytype,
-    stdin: anytype,
+    stdin_file: std.fs.File,
     question: []const u8,
     default_yes: bool,
 ) !bool {
@@ -41,8 +60,27 @@ fn promptYesNo(
     while (true) {
         try stdout.print("{s}{s}", .{ question, suffix });
 
+        if (try tryReadSingleKey(stdin_file)) |key_raw| {
+            const key = std.ascii.toLower(key_raw);
+            if (key == '\r' or key == '\n') {
+                try stdout.writeAll("\n");
+                return default_yes;
+            }
+            if (key == 'y') {
+                try stdout.writeAll("y\n");
+                return true;
+            }
+            if (key == 'n') {
+                try stdout.writeAll("n\n");
+                return false;
+            }
+            try stdout.print("{c}\n", .{key_raw});
+            try stdout.writeAll("Please answer y or n.\n");
+            continue;
+        }
+
         var buf: [256]u8 = undefined;
-        const response = try stdin.readUntilDelimiterOrEof(&buf, '\n');
+        const response = try stdin_file.reader().readUntilDelimiterOrEof(&buf, '\n');
         if (response == null) return default_yes;
 
         const trimmed = std.mem.trim(u8, response.?, " \t\r\n");
@@ -54,21 +92,78 @@ fn promptYesNo(
     }
 }
 
-fn promptApplyDecision(stdout: anytype, stdin: anytype) !ApplyDecision {
+fn promptApplyDecision(stdout: anytype, stdin_file: std.fs.File) !ApplyDecision {
     while (true) {
-        try stdout.writeAll("Apply changes? [Y/n/r]: ");
+        try stdout.writeAll("Apply changes? [Y/n]: ");
+
+        if (try tryReadSingleKey(stdin_file)) |key_raw| {
+            const key = std.ascii.toLower(key_raw);
+            if (key == '\r' or key == '\n') {
+                try stdout.writeAll("\n");
+                return .apply_all;
+            }
+            if (key == 'y') {
+                try stdout.writeAll("y\n");
+                return .apply_all;
+            }
+            if (key == 'n') {
+                try stdout.writeAll("n\n");
+                return .decline;
+            }
+            try stdout.print("{c}\n", .{key_raw});
+            try stdout.writeAll("Please answer y or n.\n");
+            continue;
+        }
 
         var buf: [256]u8 = undefined;
-        const response = try stdin.readUntilDelimiterOrEof(&buf, '\n');
+        const response = try stdin_file.reader().readUntilDelimiterOrEof(&buf, '\n');
         if (response == null) return .apply_all;
 
         const trimmed = std.mem.trim(u8, response.?, " \t\r\n");
         if (trimmed.len == 0) return .apply_all;
         if (isConfirmedResponse(trimmed)) return .apply_all;
-        if (isNegativeResponse(trimmed)) return .cancel;
-        if (std.ascii.eqlIgnoreCase(trimmed, "r") or std.ascii.eqlIgnoreCase(trimmed, "review")) return .review;
+        if (isNegativeResponse(trimmed)) return .decline;
 
-        try stdout.writeAll("Please answer yes, no, or review.\n");
+        try stdout.writeAll("Please answer yes or no.\n");
+    }
+}
+
+fn promptDeclineDecision(stdout: anytype, stdin_file: std.fs.File) !DeclineDecision {
+    while (true) {
+        try stdout.writeAll("Choose next step:\n");
+        try stdout.writeAll("  [e] Edit proposed changes one by one\n");
+        try stdout.writeAll("  [q] Quit without writing\n");
+        try stdout.writeAll("Choice [e/q]: ");
+
+        if (try tryReadSingleKey(stdin_file)) |key_raw| {
+            const key = std.ascii.toLower(key_raw);
+            if (key == '\r' or key == '\n') {
+                try stdout.writeAll("\n");
+                return .review;
+            }
+            if (key == 'e' or key == 'r') {
+                try stdout.writeAll("e\n");
+                return .review;
+            }
+            if (key == 'q' or key == 'n') {
+                try stdout.writeAll("q\n");
+                return .quit;
+            }
+            try stdout.print("{c}\n", .{key_raw});
+            try stdout.writeAll("Please answer e or q.\n");
+            continue;
+        }
+
+        var buf: [256]u8 = undefined;
+        const response = try stdin_file.reader().readUntilDelimiterOrEof(&buf, '\n');
+        if (response == null) return .review;
+
+        const trimmed = std.mem.trim(u8, response.?, " \t\r\n");
+        if (trimmed.len == 0) return .review;
+        if (std.ascii.eqlIgnoreCase(trimmed, "e") or std.ascii.eqlIgnoreCase(trimmed, "edit") or std.ascii.eqlIgnoreCase(trimmed, "r") or std.ascii.eqlIgnoreCase(trimmed, "review")) return .review;
+        if (std.ascii.eqlIgnoreCase(trimmed, "q") or std.ascii.eqlIgnoreCase(trimmed, "quit") or std.ascii.eqlIgnoreCase(trimmed, "n") or std.ascii.eqlIgnoreCase(trimmed, "no")) return .quit;
+
+        try stdout.writeAll("Please answer edit or quit.\n");
     }
 }
 
@@ -164,10 +259,11 @@ fn writeFile(path: []const u8, content: []const u8) !void {
 }
 
 pub fn run(allocator: std.mem.Allocator) !void {
+    const stdin_file = std.io.getStdIn();
     const stdout = std.io.getStdOut().writer();
     const use_color = shouldUseColor();
 
-    if (!std.io.getStdIn().isTty()) {
+    if (!stdin_file.isTty()) {
         std.debug.print("Error: wt init requires an interactive terminal\n", .{});
         std.process.exit(1);
     }
@@ -229,14 +325,19 @@ pub fn run(allocator: std.mem.Allocator) !void {
 
     try printChangesSummary(stdout, use_color, "Proposed changes:", config_path, config_exists, changes);
 
-    const decision = try promptApplyDecision(stdout, std.io.getStdIn().reader());
+    const decision = try promptApplyDecision(stdout, stdin_file);
     switch (decision) {
-        .cancel => {
-            try stdout.writeAll("Aborted without writing changes.\n");
-            return;
-        },
         .apply_all => {},
-        .review => {
+        .decline => {
+            const decline = try promptDeclineDecision(stdout, stdin_file);
+            switch (decline) {
+                .quit => {
+                    try stdout.writeAll("No changes written.\n");
+                    return;
+                },
+                .review => {},
+            }
+
             try stdout.writeAll("Review mode: Enter keeps, n skips.\n");
             for (changes) |change| {
                 const marker: []const u8 = switch (change.kind) {
@@ -251,7 +352,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
                     );
                     defer allocator.free(question);
 
-                    const keep = try promptYesNo(stdout, std.io.getStdIn().reader(), question, true);
+                    const keep = try promptYesNo(stdout, stdin_file, question, true);
                     if (!keep) {
                         try revertChange(&editable, change);
                     }

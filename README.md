@@ -107,8 +107,10 @@ Behavior:
 - Keeps already-matching recommendations automatically on re-runs.
 - Includes anti-pattern cleanup removals in the proposal.
 - Shows anti-pattern warnings only when anti-patterns are actually detected.
-- Shows one change summary and prompts once (`Enter` to apply all, `n`/`Esc` to cancel, `r` for review mode).
-- In review mode, each proposed change defaults to keep on `Enter`.
+- Shows one change summary and prompts `Apply changes? [Y/n]` (`Enter` applies all).
+- If you answer `n`, a follow-up offers explicit actions:
+  `e` to edit proposals one by one, or `q` to quit without writing.
+- In review mode, each proposed change defaults to keep (`Enter` or `y`), and `n` skips.
 - Uses color when stdout is a TTY; set `NO_COLOR=1` to disable.
 - If `.wt.toml` already exists, writes a timestamped backup before updating.
 
