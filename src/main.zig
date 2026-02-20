@@ -26,6 +26,7 @@ pub fn main() !void {
     try wt.addSubcommand(app.createCommand("list", "List all worktrees"));
 
     var cmd_new = app.createCommand("new", "Create a new worktree");
+    try cmd_new.addArg(Arg.booleanOption("porcelain", null, "Print machine-readable output only"));
     try cmd_new.addArg(Arg.positional("BRANCH", "Branch name", null));
     try cmd_new.addArg(Arg.positional("BASE", "Base ref (default: HEAD)", null));
     try wt.addSubcommand(cmd_new);
@@ -55,7 +56,8 @@ pub fn main() !void {
             std.process.exit(1);
         };
         const base = new_matches.getSingleValue("BASE") orelse "HEAD";
-        try new_cmd.run(allocator, branch, base);
+        const porcelain = new_matches.containsArg("porcelain");
+        try new_cmd.run(allocator, branch, base, porcelain);
     } else if (matches.subcommandMatches("rm")) |rm_matches| {
         const branch = rm_matches.getSingleValue("BRANCH");
         const force = rm_matches.containsArg("force");

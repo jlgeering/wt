@@ -4,7 +4,7 @@ const worktree = @import("../lib/worktree.zig");
 const config = @import("../lib/config.zig");
 const setup = @import("../lib/setup.zig");
 
-pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8) !void {
+pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, porcelain: bool) !void {
     const stdout = std.io.getStdOut().writer();
 
     // Find main worktree (first in list)
@@ -29,7 +29,9 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8) !
     // Check if worktree already exists
     if (std.fs.cwd().access(wt_path, .{})) |_| {
         std.debug.print("Worktree already exists at {s}\n", .{wt_path});
-        try stdout.print("{s}\n", .{wt_path});
+        if (porcelain) {
+            try stdout.print("{s}\n", .{wt_path});
+        }
         return;
     } else |_| {}
 
@@ -72,6 +74,8 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8) !
 
     try setup.runAllSetup(allocator, cfg.value, main_path, wt_path);
 
-    // Print path to stdout for scripting
-    try stdout.print("{s}\n", .{wt_path});
+    // Print path to stdout for machine mode.
+    if (porcelain) {
+        try stdout.print("{s}\n", .{wt_path});
+    }
 }
