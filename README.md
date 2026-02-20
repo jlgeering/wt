@@ -8,6 +8,8 @@ Worktree naming convention:
 
 - Main repo path: `/path/to/repo`
 - New worktree path for branch `feat-x`: `/path/to/repo--feat-x`
+- Branch names with `/` are percent-encoded to keep paths flat:
+  - Branch `feat/auth` -> `/path/to/repo--feat%2Fauth`
 
 ## Prerequisites
 
