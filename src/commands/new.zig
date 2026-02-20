@@ -4,6 +4,14 @@ const worktree = @import("../lib/worktree.zig");
 const config = @import("../lib/config.zig");
 const setup = @import("../lib/setup.zig");
 
+fn shouldPrintPathToStdout(porcelain: bool) bool {
+    return porcelain;
+}
+
+fn shouldPrintHumanStatus(porcelain: bool) bool {
+    return !porcelain;
+}
+
 pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, porcelain: bool) !void {
     const stdout = std.io.getStdOut().writer();
 
@@ -28,10 +36,10 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, p
 
     // Check if worktree already exists
     if (std.fs.cwd().access(wt_path, .{})) |_| {
-        if (!porcelain) {
+        if (shouldPrintHumanStatus(porcelain)) {
             std.debug.print("Worktree already exists at {s}\n", .{wt_path});
         }
-        if (porcelain) {
+        if (shouldPrintPathToStdout(porcelain)) {
             try stdout.print("{s}\n", .{wt_path});
         }
         return;
@@ -54,7 +62,7 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, p
             }
         }
 
-        if (!porcelain) {
+        if (shouldPrintHumanStatus(porcelain)) {
             std.debug.print("Using existing branch '{s}'\n", .{branch});
         }
         const add_result = git.runGit(allocator, null, &.{ "worktree", "add", wt_path, branch }) catch {
@@ -70,7 +78,7 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, p
         allocator.free(add_result);
     }
 
-    if (!porcelain) {
+    if (shouldPrintHumanStatus(porcelain)) {
         std.debug.print("Created worktree at {s}\n", .{wt_path});
     }
 
@@ -82,7 +90,17 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, p
     try setup.runAllSetup(allocator, cfg.value, main_path, wt_path, log_mode);
 
     // Print path to stdout for machine mode.
-    if (porcelain) {
+    if (shouldPrintPathToStdout(porcelain)) {
         try stdout.print("{s}\n", .{wt_path});
     }
+}
+
+test "human mode emits status not machine path" {
+    try std.testing.expect(shouldPrintHumanStatus(false));
+    try std.testing.expect(!shouldPrintPathToStdout(false));
+}
+
+test "porcelain mode emits machine path not status" {
+    try std.testing.expect(!shouldPrintHumanStatus(true));
+    try std.testing.expect(shouldPrintPathToStdout(true));
 }

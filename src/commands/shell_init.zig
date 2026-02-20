@@ -61,10 +61,14 @@ pub fn run(shell: []const u8) !void {
 
 test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "new --porcelain") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "cd \"$output\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "Entered worktree: $output") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt") != null);
 }
 
 test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "wt()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "new --porcelain") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "Entered worktree: $output") != null);
 }
