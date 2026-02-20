@@ -91,12 +91,24 @@ After `wt new demo-branch`, `pwd` should show the new worktree directory.
 ```bash
 wt list
 wt new <branch> [base]
-wt rm [branch] [-f|--force]
+wt rm [branch] [-f|--force] [--picker auto|builtin|fzf] [--no-interactive]
 wt --version
 wt shell-init <shell>
 ```
 
 Supported shells for `shell-init` are `zsh` and `bash`. This README documents zsh integration as the primary workflow.
+
+### `wt rm` interaction model
+
+- `wt rm <branch>` removes the named worktree (existing behavior).
+- `wt rm` (no branch) opens an interactive picker in a TTY:
+  - when exactly one secondary worktree exists, `wt` shows a direct confirmation prompt instead of a picker
+  - default backend is `--picker auto` (`fzf` when available, otherwise built-in picker)
+  - explicit backends: `--picker builtin` or `--picker fzf`
+  - canceling picker selection exits successfully without removing anything
+- non-interactive sessions (`pipe`, CI, or `--no-interactive`) require a branch argument:
+  - use `wt list` to inspect worktrees
+  - then remove with `wt rm <branch>`
 
 ## .wt.toml setup config
 
@@ -134,6 +146,8 @@ Setup semantics:
   - Run `type wt` and confirm `wt` is a shell function.
   - Re-run `source ~/.zshrc`.
   - Confirm your function includes `eval "$(wt shell-init zsh)"`.
+- `wt rm --picker fzf` fails with picker unavailable:
+  - Install `fzf`, or run `wt rm --picker builtin`.
 
 ## Testing
 

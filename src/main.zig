@@ -30,8 +30,10 @@ pub fn main() !void {
     try wt.addSubcommand(cmd_new);
 
     var cmd_rm = app.createCommand("rm", "Remove a worktree");
-    try cmd_rm.addArg(Arg.positional("BRANCH", "Branch name (omit for picker list)", null));
+    try cmd_rm.addArg(Arg.positional("BRANCH", "Branch name (omit to use interactive picker)", null));
     try cmd_rm.addArg(Arg.booleanOption("force", 'f', "Force removal without safety confirmation (dirty/unmerged)"));
+    try cmd_rm.addArg(Arg.singleValueOption("picker", null, "Picker backend for interactive mode: auto|builtin|fzf"));
+    try cmd_rm.addArg(Arg.booleanOption("no-interactive", null, "Disable interactive picker when BRANCH is omitted"));
     try wt.addSubcommand(cmd_rm);
 
     var cmd_shell_init = app.createCommand("shell-init", "Output shell integration function");
@@ -54,9 +56,18 @@ pub fn main() !void {
         const base = new_matches.getSingleValue("BASE") orelse "HEAD";
         try new_cmd.run(allocator, branch, base);
     } else if (matches.subcommandMatches("rm")) |rm_matches| {
-        const branch = rm_matches.getSingleValue("BRANCH");
-        const force = rm_matches.containsArg("force");
-        try rm_cmd.run(allocator, branch, force);
+        const picker_raw = rm_matches.getSingleValue("picker") orelse "auto";
+        const picker_mode = rm_cmd.parsePickerMode(picker_raw) catch {
+            std.debug.print("Error: invalid picker '{s}'. Expected auto, builtin, or fzf\n", .{picker_raw});
+            std.process.exit(1);
+        };
+
+        try rm_cmd.run(allocator, .{
+            .branch_arg = rm_matches.getSingleValue("BRANCH"),
+            .force = rm_matches.containsArg("force"),
+            .picker_mode = picker_mode,
+            .no_interactive = rm_matches.containsArg("no-interactive"),
+        });
     } else if (matches.subcommandMatches("shell-init")) |si_matches| {
         const shell = si_matches.getSingleValue("SHELL") orelse {
             std.debug.print("Error: shell name required (zsh, bash)\n", .{});
