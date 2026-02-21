@@ -6,6 +6,7 @@ const list_cmd = @import("commands/list.zig");
 const new_cmd = @import("commands/new.zig");
 const rm_cmd = @import("commands/rm.zig");
 const shell_init_cmd = @import("commands/shell_init.zig");
+const init_cmd = @import("commands/init.zig");
 
 const App = yazap.App;
 const Arg = yazap.Arg;
@@ -25,6 +26,7 @@ pub fn main() !void {
     try wt.addSubcommand(app.createCommand("list", "List all worktrees"));
 
     var cmd_new = app.createCommand("new", "Create a new worktree");
+    try cmd_new.addArg(Arg.booleanOption("porcelain", null, "Print machine-readable output only"));
     try cmd_new.addArg(Arg.positional("BRANCH", "Branch name", null));
     try cmd_new.addArg(Arg.positional("BASE", "Base ref (default: HEAD)", null));
     try wt.addSubcommand(cmd_new);
@@ -40,6 +42,8 @@ pub fn main() !void {
     try cmd_shell_init.addArg(Arg.positional("SHELL", "Shell name: zsh, bash", null));
     try wt.addSubcommand(cmd_shell_init);
 
+    try wt.addSubcommand(app.createCommand("init", "Create or upgrade .wt.toml with guided recommendations"));
+
     const matches = try app.parseProcess();
     if (matches.containsArg("version")) {
         std.debug.print("wt {s} ({s})\n", .{ build_options.version, build_options.git_sha });
@@ -54,7 +58,8 @@ pub fn main() !void {
             std.process.exit(1);
         };
         const base = new_matches.getSingleValue("BASE") orelse "HEAD";
-        try new_cmd.run(allocator, branch, base);
+        const porcelain = new_matches.containsArg("porcelain");
+        try new_cmd.run(allocator, branch, base, porcelain);
     } else if (matches.subcommandMatches("rm")) |rm_matches| {
         const picker_raw = rm_matches.getSingleValue("picker") orelse "auto";
         const picker_mode = rm_cmd.parsePickerMode(picker_raw) catch {
@@ -74,5 +79,7 @@ pub fn main() !void {
             std.process.exit(1);
         };
         try shell_init_cmd.run(shell);
+    } else if (matches.subcommandMatches("init")) |_| {
+        try init_cmd.run(allocator);
     }
 }

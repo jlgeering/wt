@@ -46,7 +46,6 @@ pub fn parsePickerMode(raw: []const u8) !PickerMode {
     if (std.ascii.eqlIgnoreCase(value, "fzf")) return .fzf;
     return error.InvalidPickerMode;
 }
-
 fn findWorktreeByBranch(worktrees: []const git.WorktreeInfo, branch: []const u8) ?git.WorktreeInfo {
     for (worktrees, 0..) |wt, idx| {
         // Never target the main worktree.
@@ -835,4 +834,24 @@ test "single candidate confirmation mode is enabled only for one candidate" {
     const many = [_]RemovalCandidate{ candidate, candidate };
     try std.testing.expect(shouldUseSingleCandidateConfirmation(&one));
     try std.testing.expect(!shouldUseSingleCandidateConfirmation(&many));
+}
+
+test "findWorktreeByBranch matches branch regardless of path naming" {
+    const worktrees = [_]git.WorktreeInfo{
+        .{ .path = "/tmp/repo", .head = "a", .branch = "main", .is_bare = false },
+        .{ .path = "/tmp/custom/location/feature-tree", .head = "b", .branch = "feat-x", .is_bare = false },
+    };
+
+    const found = findWorktreeByBranch(&worktrees, "feat-x");
+    try std.testing.expect(found != null);
+    try std.testing.expectEqualStrings("/tmp/custom/location/feature-tree", found.?.path);
+}
+
+test "findWorktreeByBranch skips main worktree" {
+    const worktrees = [_]git.WorktreeInfo{
+        .{ .path = "/tmp/repo", .head = "a", .branch = "main", .is_bare = false },
+    };
+
+    const found = findWorktreeByBranch(&worktrees, "main");
+    try std.testing.expect(found == null);
 }

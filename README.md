@@ -73,9 +73,15 @@ source ~/.zshrc
 Behavior:
 
 - The wrapper intercepts `wt new ...`.
-- It captures `wt new` stdout (the created worktree path).
+- It calls `wt new --porcelain ...` and captures stdout (the created worktree path).
 - If `wt new` exits successfully and the output is an existing directory, it runs `cd "$output"`.
+- After changing directories, it prints `Entered worktree: <path>`.
 - All other subcommands are passed through unchanged via `command wt "$@"`.
+
+Notes:
+
+- The wrapper function is intentionally named `wt`, the same as the binary.
+- Inside the function, `command wt` bypasses the function and invokes the real binary.
 
 Quick verification:
 
@@ -90,8 +96,9 @@ After `wt new demo-branch`, `pwd` should show the new worktree directory.
 
 ```bash
 wt list
-wt new <branch> [base]
+wt new [--porcelain] <branch> [base]
 wt rm [branch] [-f|--force] [--picker auto|builtin|fzf] [--no-interactive]
+wt init
 wt --version
 wt shell-init <shell>
 ```
@@ -109,6 +116,47 @@ Supported shells for `shell-init` are `zsh` and `bash`. This README documents zs
 - non-interactive sessions (`pipe`, CI, or `--no-interactive`) require a branch argument:
   - use `wt list` to inspect worktrees
   - then remove with `wt rm <branch>`
+
+`wt new` output modes:
+
+- Default mode (human): prints status messages to stderr and does not print the raw path on stdout.
+- `--porcelain` mode (machine): prints exactly the worktree path to stdout.
+
+## Guided config bootstrap (`wt init`)
+
+`wt init` creates `.wt.toml` if missing and can be run repeatedly to upgrade an existing config with current recommendations.
+
+Behavior:
+
+- Scans the repo for common local files and builds a full proposal for `copy`, `symlink`, and `run` entries.
+- Keeps already-matching recommendations automatically on re-runs.
+- Includes anti-pattern cleanup removals in the proposal.
+- Shows anti-pattern warnings only when anti-patterns are actually detected.
+- Shows one change summary and prompts `Apply changes? [Y/n]` (`Enter` applies all).
+- If you answer `n`, a follow-up offers explicit actions:
+  `e` to edit proposals one by one, or `q` to quit without writing.
+- In review mode, each proposed change defaults to keep (`Enter` or `y`), and `n` skips.
+- Uses color when stdout is a TTY; set `NO_COLOR=1` to disable.
+- If `.wt.toml` already exists, writes a timestamped backup before updating.
+
+Built-in recommendation patterns currently include:
+
+- `mise.local.toml`, `.mise.local.toml`, and other `mise*local*.toml` variants
+- `.claude/settings.local.json`
+- `.env.local` and `.env.*.local`
+- `.vscode/settings.local.json`
+- `.envrc` (symlink recommendation)
+
+Built-in command recommendations currently include:
+
+- `mise trust` (when mise config is detected and the current repo directory is already trusted)
+- `direnv allow` (when `.envrc` is detected)
+
+Built-in anti-pattern checks include:
+
+- paths present in both `[copy].paths` and `[symlink].paths`
+- discouraged copy targets: `.git`, `.beads`, `node_modules`, `.zig-cache`, `zig-out`
+- destructive run commands such as `rm -rf` and `git reset --hard`
 
 ## .wt.toml setup config
 
@@ -148,6 +196,10 @@ Setup semantics:
   - Confirm your function includes `eval "$(wt shell-init zsh)"`.
 - `wt rm --picker fzf` fails with picker unavailable:
   - Install `fzf`, or run `wt rm --picker builtin`.
+- Unsure whether function or binary is running:
+  - Run `type wt`.
+  - If it says `wt is a function`, the wrapper is active.
+  - If it says `wt is /.../wt`, you are calling the binary directly.
 
 ## Testing
 

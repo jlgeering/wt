@@ -4,7 +4,15 @@ const worktree = @import("../lib/worktree.zig");
 const config = @import("../lib/config.zig");
 const setup = @import("../lib/setup.zig");
 
-pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8) !void {
+fn shouldPrintPathToStdout(porcelain: bool) bool {
+    return porcelain;
+}
+
+fn shouldPrintHumanStatus(porcelain: bool) bool {
+    return !porcelain;
+}
+
+pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, porcelain: bool) !void {
     const stdout = std.io.getStdOut().writer();
 
     // Find main worktree (first in list)
@@ -28,8 +36,12 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8) !
 
     // Check if worktree already exists
     if (std.fs.cwd().access(wt_path, .{})) |_| {
-        std.debug.print("Worktree already exists at {s}\n", .{wt_path});
-        try stdout.print("{s}\n", .{wt_path});
+        if (shouldPrintHumanStatus(porcelain)) {
+            std.debug.print("Worktree already exists at {s}\n", .{wt_path});
+        }
+        if (shouldPrintPathToStdout(porcelain)) {
+            try stdout.print("{s}\n", .{wt_path});
+        }
         return;
     } else |_| {}
 
@@ -50,7 +62,9 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8) !
             }
         }
 
-        std.debug.print("Using existing branch '{s}'\n", .{branch});
+        if (shouldPrintHumanStatus(porcelain)) {
+            std.debug.print("Using existing branch '{s}'\n", .{branch});
+        }
         const add_result = git.runGit(allocator, null, &.{ "worktree", "add", wt_path, branch }) catch {
             std.debug.print("Error creating worktree\n", .{});
             std.process.exit(1);
@@ -64,14 +78,29 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8) !
         allocator.free(add_result);
     }
 
-    std.debug.print("Created worktree at {s}\n", .{wt_path});
+    if (shouldPrintHumanStatus(porcelain)) {
+        std.debug.print("Created worktree at {s}\n", .{wt_path});
+    }
 
     // Load config and run setup
     var cfg = try config.loadConfigFile(allocator, main_path);
     defer cfg.deinit();
 
-    try setup.runAllSetup(allocator, cfg.value, main_path, wt_path);
+    const log_mode: setup.LogMode = if (porcelain) .quiet else .human;
+    try setup.runAllSetup(allocator, cfg.value, main_path, wt_path, log_mode);
 
-    // Print path to stdout for scripting
-    try stdout.print("{s}\n", .{wt_path});
+    // Print path to stdout for machine mode.
+    if (shouldPrintPathToStdout(porcelain)) {
+        try stdout.print("{s}\n", .{wt_path});
+    }
+}
+
+test "human mode emits status not machine path" {
+    try std.testing.expect(shouldPrintHumanStatus(false));
+    try std.testing.expect(!shouldPrintPathToStdout(false));
+}
+
+test "porcelain mode emits machine path not status" {
+    try std.testing.expect(!shouldPrintHumanStatus(true));
+    try std.testing.expect(shouldPrintPathToStdout(true));
 }

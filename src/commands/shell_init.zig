@@ -8,10 +8,11 @@ const zsh_init =
     \\    case "$1" in
     \\        new)
     \\            local output
-    \\            output=$(command wt new "${@:2}" 2>/dev/tty)
+    \\            output=$(command wt new --porcelain "${@:2}" 2>/dev/tty)
     \\            local exit_code=$?
     \\            if [ $exit_code -eq 0 ] && [ -n "$output" ] && [ -d "$output" ]; then
     \\                cd "$output"
+    \\                echo "Entered worktree: $output"
     \\            fi
     \\            return $exit_code
     \\            ;;
@@ -30,10 +31,11 @@ const bash_init =
     \\    case "$1" in
     \\        new)
     \\            local output
-    \\            output=$(command wt new "${@:2}" 2>/dev/tty)
+    \\            output=$(command wt new --porcelain "${@:2}" 2>/dev/tty)
     \\            local exit_code=$?
     \\            if [ $exit_code -eq 0 ] && [ -n "$output" ] && [ -d "$output" ]; then
     \\                cd "$output"
+    \\                echo "Entered worktree: $output"
     \\            fi
     \\            return $exit_code
     \\            ;;
@@ -59,10 +61,14 @@ pub fn run(shell: []const u8) !void {
 
 test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "new --porcelain") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "cd \"$output\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "Entered worktree: $output") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt") != null);
 }
 
 test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "wt()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "new --porcelain") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "Entered worktree: $output") != null);
 }

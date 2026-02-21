@@ -2,9 +2,20 @@ const std = @import("std");
 const builtin = @import("builtin");
 const config_mod = @import("config.zig");
 
+pub const LogMode = enum {
+    human,
+    quiet,
+};
+
 /// Copy a path from source to target using copy-on-write where available.
 /// Shells out to `cp` for CoW support. Skips if source missing or target exists.
-pub fn cowCopy(allocator: std.mem.Allocator, source_root: []const u8, target_root: []const u8, rel_path: []const u8) !void {
+pub fn cowCopy(
+    allocator: std.mem.Allocator,
+    source_root: []const u8,
+    target_root: []const u8,
+    rel_path: []const u8,
+    mode: LogMode,
+) !void {
     const source = try std.fs.path.join(allocator, &.{ source_root, rel_path });
     defer allocator.free(source);
     const target = try std.fs.path.join(allocator, &.{ target_root, rel_path });
@@ -12,13 +23,17 @@ pub fn cowCopy(allocator: std.mem.Allocator, source_root: []const u8, target_roo
 
     // Check source exists
     std.fs.cwd().access(source, .{}) catch {
-        std.debug.print("  skip copy {s}: source doesn't exist\n", .{rel_path});
+        if (mode == .human) {
+            std.debug.print("  skip copy {s}: source doesn't exist\n", .{rel_path});
+        }
         return;
     };
 
     // Check target doesn't already exist
     if (std.fs.cwd().access(target, .{})) |_| {
-        std.debug.print("  skip copy {s}: already exists\n", .{rel_path});
+        if (mode == .human) {
+            std.debug.print("  skip copy {s}: already exists\n", .{rel_path});
+        }
         return;
     } else |_| {}
 
@@ -57,12 +72,20 @@ pub fn cowCopy(allocator: std.mem.Allocator, source_root: []const u8, target_roo
         },
     }
 
-    std.debug.print("  copied (CoW) {s}\n", .{rel_path});
+    if (mode == .human) {
+        std.debug.print("  copied (CoW) {s}\n", .{rel_path});
+    }
 }
 
 /// Create a symlink from target_root/rel_path -> source_root/rel_path.
 /// Skips if target already exists.
-pub fn createSymlink(allocator: std.mem.Allocator, source_root: []const u8, target_root: []const u8, rel_path: []const u8) !void {
+pub fn createSymlink(
+    allocator: std.mem.Allocator,
+    source_root: []const u8,
+    target_root: []const u8,
+    rel_path: []const u8,
+    mode: LogMode,
+) !void {
     const source = try std.fs.path.join(allocator, &.{ source_root, rel_path });
     defer allocator.free(source);
     const target = try std.fs.path.join(allocator, &.{ target_root, rel_path });
@@ -70,13 +93,17 @@ pub fn createSymlink(allocator: std.mem.Allocator, source_root: []const u8, targ
 
     // Check source exists
     std.fs.cwd().access(source, .{}) catch {
-        std.debug.print("  skip symlink {s}: source doesn't exist\n", .{rel_path});
+        if (mode == .human) {
+            std.debug.print("  skip symlink {s}: source doesn't exist\n", .{rel_path});
+        }
         return;
     };
 
     // Check target doesn't already exist
     if (std.fs.cwd().access(target, .{})) |_| {
-        std.debug.print("  skip symlink {s}: already exists\n", .{rel_path});
+        if (mode == .human) {
+            std.debug.print("  skip symlink {s}: already exists\n", .{rel_path});
+        }
         return;
     } else |_| {}
 
@@ -90,14 +117,23 @@ pub fn createSymlink(allocator: std.mem.Allocator, source_root: []const u8, targ
         return;
     };
 
-    std.debug.print("  symlinked {s}\n", .{rel_path});
+    if (mode == .human) {
+        std.debug.print("  symlinked {s}\n", .{rel_path});
+    }
 }
 
 /// Run post-setup commands in the given working directory.
 /// Warns on failure but continues to next command.
-pub fn runSetupCommands(allocator: std.mem.Allocator, cwd: []const u8, commands: []const []const u8) !void {
+pub fn runSetupCommands(
+    allocator: std.mem.Allocator,
+    cwd: []const u8,
+    commands: []const []const u8,
+    mode: LogMode,
+) !void {
     for (commands) |cmd| {
-        std.debug.print("  running: {s}\n", .{cmd});
+        if (mode == .human) {
+            std.debug.print("  running: {s}\n", .{cmd});
+        }
 
         const result = std.process.Child.run(.{
             .allocator = allocator,
@@ -124,16 +160,22 @@ pub fn runSetupCommands(allocator: std.mem.Allocator, cwd: []const u8, commands:
 }
 
 /// Run all setup operations from a Config on a new worktree.
-pub fn runAllSetup(allocator: std.mem.Allocator, cfg: config_mod.Config, main_path: []const u8, worktree_path: []const u8) !void {
+pub fn runAllSetup(
+    allocator: std.mem.Allocator,
+    cfg: config_mod.Config,
+    main_path: []const u8,
+    worktree_path: []const u8,
+    mode: LogMode,
+) !void {
     for (cfg.copyPaths()) |path| {
-        try cowCopy(allocator, main_path, worktree_path, path);
+        try cowCopy(allocator, main_path, worktree_path, path, mode);
     }
 
     for (cfg.symlinkPaths()) |path| {
-        try createSymlink(allocator, main_path, worktree_path, path);
+        try createSymlink(allocator, main_path, worktree_path, path, mode);
     }
 
-    try runSetupCommands(allocator, worktree_path, cfg.runCommands());
+    try runSetupCommands(allocator, worktree_path, cfg.runCommands(), mode);
 }
 
 // Setup operations are filesystem-heavy; tested via integration tests.

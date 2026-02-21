@@ -13,14 +13,17 @@ List all worktrees with status info (dirty/clean, ahead/behind). Current worktre
 * fix-bug        /Users/jl/src/myapp--fix-bug    (clean, 2 ahead)
 ```
 
-### `wt new <branch> [base-ref]`
-Create worktree at `{repo}--{branch}` as sibling directory. If worktree already exists, skip creation. Run `.wt.toml` setup (CoW copies, symlinks, run commands). Print path to stdout. Default base-ref: HEAD.
+### `wt new [--porcelain] <branch> [base-ref]`
+Create worktree at `{repo}--{branch}` as sibling directory. If worktree already exists, skip creation. Run `.wt.toml` setup (CoW copies, symlinks, run commands). Default base-ref: HEAD.
+
+- default mode: human-oriented status output, no raw path on stdout
+- `--porcelain`: machine mode, print only the path to stdout
 
 ### `wt rm [branch]`
 Remove a worktree. Without arg: list worktrees with safety status for external picker (fzf/gum). With arg: check for uncommitted changes and unmerged commits. Prompt before unsafe removal. Auto-delete branch if fully merged. `--force` to skip safety checks.
 
 ### `wt shell-init <shell>`
-Output a shell function that wraps `wt new` and `wt rm` to `cd` into the result. Usage: `eval "$(wt shell-init zsh)"` in `.zshrc`. Supports zsh (primary), bash, fish (future).
+Output a shell function that wraps `wt new` and `wt rm` to `cd` into the result. The wrapper calls `wt new --porcelain` so it can capture only the path and then print a concise success line. Usage: `eval "$(wt shell-init zsh)"` in `.zshrc`. Supports zsh (primary), bash, fish (future).
 
 ## Config File
 
@@ -74,8 +77,8 @@ build.zig                # Build config, dependencies (yazap, zig-config)
 
 ### Key Conventions
 
-- stdout: machine-readable data (paths, shell scripts)
-- stderr: human-readable status messages and errors
+- default mode: stderr for human-readable status/errors
+- porcelain mode: stdout for machine-readable data (path output), stderr only for warnings/errors
 - All git interaction via `std.process.Child.run()` with `--porcelain` where available
 - Worktree naming: `{repo}--{branch}` as sibling directory, not configurable
 - Zig version pinned via mise
@@ -129,9 +132,9 @@ Run all: `zig build test`
 
 Git CLI is stable, well-tested, and avoids a massive C dependency. Porcelain output (`--porcelain`) is designed for machine parsing. Every successful worktree tool in the ecosystem does this.
 
-### ADR-2: stdout for data, stderr for UI
+### ADR-2: mode-based output contract (`wt new` human default + `--porcelain`)
 
-Enables composability: `cd $(wt new foo)` works because status messages go to stderr. Matches Unix conventions.
+Default command use optimizes readability, while `--porcelain` keeps script integration stable and explicit. Matches Unix conventions without forcing machine output into interactive runs.
 
 ### ADR-3: yazap over zig-clap
 
