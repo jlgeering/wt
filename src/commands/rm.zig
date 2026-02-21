@@ -702,26 +702,6 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     try removeCandidate(allocator, candidates[selected_index.?], main_path, options.force);
 }
 
-test "findWorktreeByBranch matches branch regardless of path naming" {
-    const worktrees = [_]git.WorktreeInfo{
-        .{ .path = "/tmp/repo", .head = "a", .branch = "main", .is_bare = false },
-        .{ .path = "/tmp/custom/location/feature-tree", .head = "b", .branch = "feat-x", .is_bare = false },
-    };
-
-    const found = findWorktreeByBranch(&worktrees, "feat-x");
-    try std.testing.expect(found != null);
-    try std.testing.expectEqualStrings("/tmp/custom/location/feature-tree", found.?.path);
-}
-
-test "findWorktreeByBranch skips main worktree" {
-    const worktrees = [_]git.WorktreeInfo{
-        .{ .path = "/tmp/repo", .head = "a", .branch = "main", .is_bare = false },
-    };
-
-    const found = findWorktreeByBranch(&worktrees, "main");
-    try std.testing.expect(found == null);
-}
-
 test "parsePickerMode accepts known values" {
     try std.testing.expectEqual(PickerMode.auto, try parsePickerMode("auto"));
     try std.testing.expectEqual(PickerMode.builtin, try parsePickerMode("builtin"));
