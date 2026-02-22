@@ -14,10 +14,6 @@ Always run direct `br` commands through mise so agents use the mise-managed tool
 - `mise x -- br close <id> --reason="Completed"`
 - `mise x -- br sync --flush-only`
 
-First-time setup (if `.beads/` is missing):
-
-- `mise x -- br init`
-
 ## Tooling Policy
 
 We use mise for tool versions, task execution, and environment setup.
