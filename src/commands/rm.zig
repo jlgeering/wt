@@ -162,18 +162,17 @@ fn formatCandidateSummary(buffer: []u8, candidate: RemovalCandidate) []const u8 
     if (!is_dirty) {
         w.writeAll("clean") catch unreachable;
     } else {
-        w.writeAll("dirty") catch unreachable;
+        var wrote_change = false;
         if (candidate.modified > 0) {
-            w.print(": {d} modified", .{candidate.modified}) catch unreachable;
+            w.print("M:{d}", .{candidate.modified}) catch unreachable;
+            wrote_change = true;
         }
         if (candidate.untracked > 0) {
-            if (candidate.modified > 0) {
-                w.writeAll(", ") catch unreachable;
-            } else {
-                w.writeAll(": ") catch unreachable;
-            }
-            w.print("{d} untracked", .{candidate.untracked}) catch unreachable;
+            if (wrote_change) w.writeAll(" ") catch unreachable;
+            w.print("U:{d}", .{candidate.untracked}) catch unreachable;
+            wrote_change = true;
         }
+        if (!wrote_change) w.writeAll("changes") catch unreachable;
     }
 
     if (candidate.unmerged) |count| {
@@ -831,7 +830,7 @@ test "branchDeleteAction skips detached worktrees" {
     try std.testing.expectEqual(BranchDeleteAction.delete, branchDeleteAction(branched));
 }
 
-test "formatCandidateSummary includes dirty and unmerged details" {
+test "formatCandidateSummary uses compact dirty summary and unmerged details" {
     const candidate: RemovalCandidate = .{
         .path = "/tmp/repo--feat",
         .branch = "feat",
@@ -843,9 +842,8 @@ test "formatCandidateSummary includes dirty and unmerged details" {
 
     var buf: [128]u8 = undefined;
     const summary = formatCandidateSummary(&buf, candidate);
-    try std.testing.expect(std.mem.indexOf(u8, summary, "dirty") != null);
-    try std.testing.expect(std.mem.indexOf(u8, summary, "2 modified") != null);
-    try std.testing.expect(std.mem.indexOf(u8, summary, "1 untracked") != null);
+    try std.testing.expect(std.mem.indexOf(u8, summary, "M:2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, summary, "U:1") != null);
     try std.testing.expect(std.mem.indexOf(u8, summary, "3 unmerged") != null);
 }
 

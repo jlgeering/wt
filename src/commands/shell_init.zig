@@ -12,20 +12,7 @@ const zsh_init =
     \\
     \\    if [ "$#" -eq 0 ]; then
     \\        local worktrees
-    \\        worktrees=$(command git worktree list --porcelain 2>/dev/null | awk '
-    \\            $1 == "worktree" { path = substr($0, 10); branch = "(detached)"; next }
-    \\            $1 == "branch" { branch = $2; sub("^refs/heads/", "", branch); next }
-    \\            $0 == "" && path != "" {
-    \\                printf "%s\t%s\n", branch, path
-    \\                path = ""
-    \\                branch = "(detached)"
-    \\            }
-    \\            END {
-    \\                if (path != "") {
-    \\                    printf "%s\t%s\n", branch, path
-    \\                }
-    \\            }
-    \\        ')
+    \\        worktrees=$(command wt list --porcelain 2>/dev/null)
     \\        local list_exit=$?
     \\        if [ $list_exit -ne 0 ] || [ -z "$worktrees" ]; then
     \\            command wt "$@"
@@ -40,18 +27,55 @@ const zsh_init =
     \\        if [ "$count" -eq 1 ]; then
     \\            local only_branch
     \\            local only_path
-    \\            only_branch=$(printf '%s\n' "$worktrees" | cut -f1)
-    \\            only_path=$(printf '%s\n' "$worktrees" | cut -f2-)
+    \\            only_branch=$(printf '%s\n' "$worktrees" | cut -f2)
+    \\            only_path=$(printf '%s\n' "$worktrees" | cut -f3)
     \\            echo "Only one worktree is available: ${only_branch} (${only_path}). Staying in the current directory."
     \\            return 0
     \\        fi
     \\
     \\        local picker_rows
-    \\        picker_rows=$(printf '%s\n' "$worktrees" | awk -F '\t' '{ printf "%s\t%-20s  %s\n", $2, $1, $2 }')
+    \\        picker_rows=$(printf '%s\n' "$worktrees" | awk -F '\t' '
+    \\            NF < 9 { next }
+    \\            {
+    \\                branch = $2
+    \\                path = $3
+    \\                state = $4
+    \\                modified = $5 + 0
+    \\                untracked = $6 + 0
+    \\                ahead = $7 + 0
+    \\                behind = $8 + 0
+    \\
+    \\                summary = state
+    \\                if (state == "dirty") {
+    \\                    summary = ""
+    \\                    if (modified > 0) {
+    \\                        summary = sprintf("M:%d", modified)
+    \\                    }
+    \\                    if (untracked > 0) {
+    \\                        if (length(summary) > 0) {
+    \\                            summary = sprintf("%s U:%d", summary, untracked)
+    \\                        } else {
+    \\                            summary = sprintf("U:%d", untracked)
+    \\                        }
+    \\                    }
+    \\                    if (length(summary) == 0) {
+    \\                        summary = "changes"
+    \\                    }
+    \\                }
+    \\                if (ahead > 0) {
+    \\                    summary = sprintf("%s ^%d", summary, ahead)
+    \\                }
+    \\                if (behind > 0) {
+    \\                    summary = sprintf("%s v%d", summary, behind)
+    \\                }
+    \\
+    \\                printf "%s\t%-20s  %-20s  %s\n", path, branch, summary, path
+    \\            }
+    \\        ')
     \\
     \\        local selected_path=""
     \\        if command -v fzf >/dev/null 2>&1; then
-    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2 --header "BRANCH                PATH" | cut -f1)
+    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --no-color --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2 --header "BRANCH                STATUS               PATH" | cut -f1)
     \\        else
     \\            echo "Choose a worktree:"
     \\            printf '%s\n' "$picker_rows" | awk -F '\t' '{ printf "  [%d] %s\n", NR, $2 }'
@@ -121,20 +145,7 @@ const bash_init =
     \\
     \\    if [ "$#" -eq 0 ]; then
     \\        local worktrees
-    \\        worktrees=$(command git worktree list --porcelain 2>/dev/null | awk '
-    \\            $1 == "worktree" { path = substr($0, 10); branch = "(detached)"; next }
-    \\            $1 == "branch" { branch = $2; sub("^refs/heads/", "", branch); next }
-    \\            $0 == "" && path != "" {
-    \\                printf "%s\t%s\n", branch, path
-    \\                path = ""
-    \\                branch = "(detached)"
-    \\            }
-    \\            END {
-    \\                if (path != "") {
-    \\                    printf "%s\t%s\n", branch, path
-    \\                }
-    \\            }
-    \\        ')
+    \\        worktrees=$(command wt list --porcelain 2>/dev/null)
     \\        local list_exit=$?
     \\        if [ $list_exit -ne 0 ] || [ -z "$worktrees" ]; then
     \\            command wt "$@"
@@ -149,18 +160,55 @@ const bash_init =
     \\        if [ "$count" -eq 1 ]; then
     \\            local only_branch
     \\            local only_path
-    \\            only_branch=$(printf '%s\n' "$worktrees" | cut -f1)
-    \\            only_path=$(printf '%s\n' "$worktrees" | cut -f2-)
+    \\            only_branch=$(printf '%s\n' "$worktrees" | cut -f2)
+    \\            only_path=$(printf '%s\n' "$worktrees" | cut -f3)
     \\            echo "Only one worktree is available: ${only_branch} (${only_path}). Staying in the current directory."
     \\            return 0
     \\        fi
     \\
     \\        local picker_rows
-    \\        picker_rows=$(printf '%s\n' "$worktrees" | awk -F '\t' '{ printf "%s\t%-20s  %s\n", $2, $1, $2 }')
+    \\        picker_rows=$(printf '%s\n' "$worktrees" | awk -F '\t' '
+    \\            NF < 9 { next }
+    \\            {
+    \\                branch = $2
+    \\                path = $3
+    \\                state = $4
+    \\                modified = $5 + 0
+    \\                untracked = $6 + 0
+    \\                ahead = $7 + 0
+    \\                behind = $8 + 0
+    \\
+    \\                summary = state
+    \\                if (state == "dirty") {
+    \\                    summary = ""
+    \\                    if (modified > 0) {
+    \\                        summary = sprintf("M:%d", modified)
+    \\                    }
+    \\                    if (untracked > 0) {
+    \\                        if (length(summary) > 0) {
+    \\                            summary = sprintf("%s U:%d", summary, untracked)
+    \\                        } else {
+    \\                            summary = sprintf("U:%d", untracked)
+    \\                        }
+    \\                    }
+    \\                    if (length(summary) == 0) {
+    \\                        summary = "changes"
+    \\                    }
+    \\                }
+    \\                if (ahead > 0) {
+    \\                    summary = sprintf("%s ^%d", summary, ahead)
+    \\                }
+    \\                if (behind > 0) {
+    \\                    summary = sprintf("%s v%d", summary, behind)
+    \\                }
+    \\
+    \\                printf "%s\t%-20s  %-20s  %s\n", path, branch, summary, path
+    \\            }
+    \\        ')
     \\
     \\        local selected_path=""
     \\        if command -v fzf >/dev/null 2>&1; then
-    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2 --header "BRANCH                PATH" | cut -f1)
+    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --no-color --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2 --header "BRANCH                STATUS               PATH" | cut -f1)
     \\        else
     \\            echo "Choose a worktree:"
     \\            printf '%s\n' "$picker_rows" | awk -F '\t' '{ printf "  [%d] %s\n", NR, $2 }'
@@ -236,8 +284,9 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "${1#-}") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "new|add") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "\"$1\" --porcelain") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "git worktree list --porcelain") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt list --porcelain") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command -v fzf") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "--no-color") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "Only one worktree is available:") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "Select worktree [1-") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "cd \"$output\"") != null);
@@ -251,8 +300,9 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "${1#-}") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "new|add") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "\"$1\" --porcelain") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bash_init, "git worktree list --porcelain") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "wt list --porcelain") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "command -v fzf") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "--no-color") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "Only one worktree is available:") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "Entered worktree: $output") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "Entered worktree: $selected_path") != null);

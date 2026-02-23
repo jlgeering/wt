@@ -12,6 +12,12 @@ pub const WorktreeStatus = struct {
     untracked: usize,
 };
 
+pub const BranchDivergence = struct {
+    has_upstream: bool,
+    ahead: usize,
+    behind: usize,
+};
+
 /// Parse integer output from git commands like `rev-list --count`.
 pub fn parseCountOutput(output: []const u8) !usize {
     const trimmed = std.mem.trim(u8, output, " \t\r\n");
@@ -67,6 +73,7 @@ pub fn parseStatusPorcelain(output: []const u8) WorktreeStatus {
     var lines = std.mem.splitScalar(u8, output, '\n');
     while (lines.next()) |line| {
         if (line.len < 2) continue;
+        if (line[0] == '#' and line[1] == '#') continue;
         if (line[0] == '?' and line[1] == '?') {
             untracked += 1;
         } else {
@@ -75,6 +82,38 @@ pub fn parseStatusPorcelain(output: []const u8) WorktreeStatus {
     }
 
     return .{ .modified = modified, .untracked = untracked };
+}
+
+/// Parse branch divergence from `git status --porcelain --branch` first header line.
+pub fn parseBranchDivergence(output: []const u8) BranchDivergence {
+    var result: BranchDivergence = .{
+        .has_upstream = false,
+        .ahead = 0,
+        .behind = 0,
+    };
+
+    var lines = std.mem.splitScalar(u8, output, '\n');
+    const first_line = lines.next() orelse return result;
+    if (!std.mem.startsWith(u8, first_line, "## ")) return result;
+
+    const header = first_line[3..];
+    result.has_upstream = std.mem.indexOf(u8, header, "...") != null;
+
+    const bracket_open = std.mem.indexOfScalar(u8, header, '[') orelse return result;
+    const bracket_close = std.mem.indexOfScalarPos(u8, header, bracket_open + 1, ']') orelse return result;
+    const details = std.mem.trim(u8, header[bracket_open + 1 .. bracket_close], " ");
+
+    var parts = std.mem.splitScalar(u8, details, ',');
+    while (parts.next()) |raw_part| {
+        const part = std.mem.trim(u8, raw_part, " ");
+        if (std.mem.startsWith(u8, part, "ahead ")) {
+            result.ahead = std.fmt.parseInt(usize, part["ahead ".len..], 10) catch result.ahead;
+        } else if (std.mem.startsWith(u8, part, "behind ")) {
+            result.behind = std.fmt.parseInt(usize, part["behind ".len..], 10) catch result.behind;
+        }
+    }
+
+    return result;
 }
 
 /// Count commits reachable from `branch_ref` but not from `base_ref`.
@@ -194,6 +233,42 @@ test "parseStatusPorcelain handles empty output" {
     const status = parseStatusPorcelain("");
     try std.testing.expectEqual(@as(usize, 0), status.modified);
     try std.testing.expectEqual(@as(usize, 0), status.untracked);
+}
+
+test "parseStatusPorcelain ignores --branch header line" {
+    const input =
+        \\## main...origin/main [ahead 2]
+        \\ M src/main.zig
+        \\?? new_file.txt
+    ;
+
+    const status = parseStatusPorcelain(input);
+    try std.testing.expectEqual(@as(usize, 1), status.modified);
+    try std.testing.expectEqual(@as(usize, 1), status.untracked);
+}
+
+test "parseBranchDivergence parses ahead and behind counters" {
+    const input = "## feat-x...origin/feat-x [ahead 3, behind 1]\n";
+    const divergence = parseBranchDivergence(input);
+    try std.testing.expect(divergence.has_upstream);
+    try std.testing.expectEqual(@as(usize, 3), divergence.ahead);
+    try std.testing.expectEqual(@as(usize, 1), divergence.behind);
+}
+
+test "parseBranchDivergence handles synced branch with upstream" {
+    const input = "## main...origin/main\n";
+    const divergence = parseBranchDivergence(input);
+    try std.testing.expect(divergence.has_upstream);
+    try std.testing.expectEqual(@as(usize, 0), divergence.ahead);
+    try std.testing.expectEqual(@as(usize, 0), divergence.behind);
+}
+
+test "parseBranchDivergence handles branch without upstream" {
+    const input = "## feat-local\n";
+    const divergence = parseBranchDivergence(input);
+    try std.testing.expect(!divergence.has_upstream);
+    try std.testing.expectEqual(@as(usize, 0), divergence.ahead);
+    try std.testing.expectEqual(@as(usize, 0), divergence.behind);
 }
 
 test "parseCountOutput parses newline-terminated number" {
