@@ -82,16 +82,17 @@ const zsh_init =
     \\                    }
     \\                }
     \\
-    \\                printf "%s\t%-20s\t%-8s\t%-9s\t%-9s\t%s\n", path, branch, wt, base, upstream, path
+    \\                display = sprintf("%-20s  %-8s   %-9s  %-9s  %s", branch, wt, base, upstream, path)
+    \\                printf "%s\t%s\n", path, display
     \\            }
     \\        ')
     \\
     \\        local selected_path=""
     \\        if command -v fzf >/dev/null 2>&1; then
-    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --no-color --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2..5 --header "BRANCH                WT       BASE      UPSTREAM  PATH" | cut -f1)
+    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --no-color --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2 --tabstop 4 --header "BRANCH                WT         BASE       UPSTREAM   PATH" | cut -f1)
     \\        else
     \\            echo "Choose a worktree:"
-    \\            printf '%s\n' "$picker_rows" | awk -F '\t' '{ printf "  [%d] %-20s  %-8s  %-9s  %-9s\n", NR, $2, $3, $4, $5 }'
+    \\            printf '%s\n' "$picker_rows" | awk -F '\t' '{ printf "  [%d] %s\n", NR, $2 }'
     \\            while true; do
     \\                printf "Select worktree [1-%s], q to quit: " "$count"
     \\                local selection
@@ -228,16 +229,17 @@ const bash_init =
     \\                    }
     \\                }
     \\
-    \\                printf "%s\t%-20s\t%-8s\t%-9s\t%-9s\t%s\n", path, branch, wt, base, upstream, path
+    \\                display = sprintf("%-20s  %-8s   %-9s  %-9s  %s", branch, wt, base, upstream, path)
+    \\                printf "%s\t%s\n", path, display
     \\            }
     \\        ')
     \\
     \\        local selected_path=""
     \\        if command -v fzf >/dev/null 2>&1; then
-    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --no-color --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2..5 --header "BRANCH                WT       BASE      UPSTREAM  PATH" | cut -f1)
+    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --no-color --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2 --tabstop 4 --header "BRANCH                WT         BASE       UPSTREAM   PATH" | cut -f1)
     \\        else
     \\            echo "Choose a worktree:"
-    \\            printf '%s\n' "$picker_rows" | awk -F '\t' '{ printf "  [%d] %-20s  %-8s  %-9s  %-9s\n", NR, $2, $3, $4, $5 }'
+    \\            printf '%s\n' "$picker_rows" | awk -F '\t' '{ printf "  [%d] %s\n", NR, $2 }'
     \\            while true; do
     \\                printf "Select worktree [1-%s], q to quit: " "$count"
     \\                local selection

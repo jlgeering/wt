@@ -341,7 +341,7 @@ fn selectViaFzf(
             "--with-nth",
             "2",
             "--header",
-            "BRANCH               STATUS                      PATH",
+            "BRANCH                STATUS                       PATH",
             "--tabstop",
             "4",
             "--ansi",
@@ -366,11 +366,11 @@ fn selectViaFzf(
             if (use_color) {
                 const summary_color: []const u8 = if (candidate.safe) ansi_green else ansi_yellow;
                 try input.print(
-                    "{d}\t{s:<20}  {s}{s:<26}{s}  {s}\n",
+                    "{d}\t{s:<20}   {s}{s:<26}{s}   {s}\n",
                     .{ idx + 1, branch_name, summary_color, summary, ansi_reset, candidate.path },
                 );
             } else {
-                try input.print("{d}\t{s:<20}  {s:<26}  {s}\n", .{ idx + 1, branch_name, summary, candidate.path });
+                try input.print("{d}\t{s:<20}   {s:<26}   {s}\n", .{ idx + 1, branch_name, summary, candidate.path });
             }
         }
     }
