@@ -11,6 +11,14 @@ Worktree naming convention:
 - Branch names with `/` are percent-encoded to keep paths flat:
   - Branch `feat/auth` -> `/path/to/repo--feat%2Fauth`
 
+## Project status
+
+This is a learning and exploration project built with rapid, experimental development practices.
+
+I use `wt` in my own workflow, but it is still experimental software and may contain rough edges, incomplete behavior, or breaking changes.
+
+Use it with caution, and avoid relying on it for production-critical workflows.
+
 ## Prerequisites
 
 - `git` must be installed and available on `PATH`.
