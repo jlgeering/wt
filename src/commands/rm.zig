@@ -103,11 +103,6 @@ fn isConfirmedResponse(input: []const u8) bool {
     return std.ascii.eqlIgnoreCase(trimmed, "y") or std.ascii.eqlIgnoreCase(trimmed, "yes");
 }
 
-fn isNegativeResponse(input: []const u8) bool {
-    const trimmed = std.mem.trim(u8, input, " \t\r\n");
-    return std.ascii.eqlIgnoreCase(trimmed, "n") or std.ascii.eqlIgnoreCase(trimmed, "no");
-}
-
 fn isCancelKey(key: u8) bool {
     return key == esc_key or key == ctrl_c_key;
 }
@@ -118,10 +113,6 @@ fn isCancelResponse(input: []const u8) bool {
     return std.ascii.eqlIgnoreCase(trimmed, "q") or
         std.ascii.eqlIgnoreCase(trimmed, "quit") or
         std.ascii.eqlIgnoreCase(trimmed, "cancel");
-}
-
-fn shouldUseSingleCandidateConfirmation(candidates: []const RemovalCandidate) bool {
-    return candidates.len == 1;
 }
 
 fn shouldUseColor() bool {
@@ -336,77 +327,6 @@ fn selectViaBuiltin(
 
     return promptSelectionLineMode(stdout, stdin_file, candidates.len);
 }
-
-fn promptSingleCandidateConfirmationLineMode(
-    stdout: anytype,
-    stdin_file: std.fs.File,
-) !bool {
-    var response_buf: [128]u8 = undefined;
-
-    while (true) {
-        try stdout.writeAll("Remove this worktree? [y/N] (q to quit): ");
-        const response = try stdin_file.reader().readUntilDelimiterOrEof(&response_buf, '\n');
-        if (response == null) return false;
-
-        const trimmed = std.mem.trim(u8, response.?, " \t\r\n");
-        if (trimmed.len == 0) return false;
-        if (isConfirmedResponse(trimmed)) return true;
-        if (isNegativeResponse(trimmed) or isCancelResponse(trimmed)) return false;
-
-        try stdout.writeAll("Please answer y or q.\n");
-    }
-}
-
-fn promptSingleCandidateConfirmationRawMode(
-    stdout: anytype,
-    stdin_file: std.fs.File,
-) !bool {
-    while (true) {
-        try stdout.writeAll("Remove this worktree? [y/N] (q to quit): ");
-
-        const key = (try tryReadSingleKey(stdin_file)) orelse return error.SingleKeyUnavailable;
-        const lower = std.ascii.toLower(key);
-        if (key == '\r' or key == '\n') {
-            try stdout.writeAll("\n");
-            return false;
-        }
-        if (lower == 'y') {
-            try stdout.print("{c}\n", .{key});
-            return true;
-        }
-        if (lower == 'n' or lower == 'q' or isCancelKey(key)) {
-            if (isCancelKey(key)) {
-                try stdout.writeAll("\n");
-            } else {
-                try stdout.print("{c}\n", .{key});
-            }
-            return false;
-        }
-
-        try stdout.print("{c}\n", .{key});
-        try stdout.writeAll("Please answer y or q.\n");
-    }
-}
-
-fn confirmSingleCandidateRemoval(
-    stdout: anytype,
-    stdin_file: std.fs.File,
-    candidate: RemovalCandidate,
-    use_color: bool,
-) !bool {
-    try stdout.writeAll("One secondary worktree found:\n");
-    try printCandidateRow(stdout, use_color, 0, candidate);
-
-    if (isSingleKeySupported(stdin_file)) {
-        return promptSingleCandidateConfirmationRawMode(stdout, stdin_file) catch |err| switch (err) {
-            error.SingleKeyUnavailable => promptSingleCandidateConfirmationLineMode(stdout, stdin_file),
-            else => err,
-        };
-    }
-
-    return promptSingleCandidateConfirmationLineMode(stdout, stdin_file);
-}
-
 fn isFzfCancelTerm(term: std.process.Child.Term) bool {
     return switch (term) {
         .Exited => |code| code == 130,
@@ -418,6 +338,7 @@ fn isFzfCancelTerm(term: std.process.Child.Term) bool {
 fn selectViaFzf(
     allocator: std.mem.Allocator,
     candidates: []const RemovalCandidate,
+    use_color: bool,
 ) !?usize {
     var child = std.process.Child.init(
         &.{
@@ -428,6 +349,15 @@ fn selectViaFzf(
             "40%",
             "--reverse",
             "--no-multi",
+            "--delimiter",
+            "\t",
+            "--with-nth",
+            "2,3,4",
+            "--header",
+            "BRANCH\tPATH\tSTATUS",
+            "--tabstop",
+            "4",
+            "--ansi",
         },
         allocator,
     );
@@ -446,7 +376,15 @@ fn selectViaFzf(
             var summary_buf: [128]u8 = undefined;
             const summary = formatCandidateSummary(&summary_buf, candidate);
             const branch_name = candidate.branch orelse "(detached)";
-            try input.print("{d}\t{s}\t{s}\t{s}\n", .{ idx + 1, branch_name, candidate.path, summary });
+            if (use_color) {
+                const summary_color: []const u8 = if (candidate.safe) ansi_green else ansi_yellow;
+                try input.print(
+                    "{d}\t{s}\t{s}\t{s}{s}{s}\n",
+                    .{ idx + 1, branch_name, candidate.path, summary_color, summary, ansi_reset },
+                );
+            } else {
+                try input.print("{d}\t{s}\t{s}\t{s}\n", .{ idx + 1, branch_name, candidate.path, summary });
+            }
         }
     }
     child.stdin.?.close();
@@ -480,6 +418,50 @@ fn selectViaFzf(
     if (selected < 1 or selected > candidates.len) return error.FzfInvalidSelection;
 
     return selected - 1;
+}
+
+fn printBlockedCurrentWorktreeMessage(
+    stderr: anytype,
+    use_color: bool,
+    current_branch: []const u8,
+    current_path: []const u8,
+    main_path: []const u8,
+) !void {
+    if (use_color) {
+        try stderr.print(
+            "\n{s}{s}Warning:{s} cannot remove the current worktree\n",
+            .{ ansi_bold, ansi_yellow, ansi_reset },
+        );
+        try stderr.print("  branch: {s}{s}{s}\n", .{ ansi_bold, current_branch, ansi_reset });
+        try stderr.print("  path:   {s}\n", .{current_path});
+    } else {
+        try stderr.writeAll("\nWarning: cannot remove the current worktree\n");
+        try stderr.print("  branch: {s}\n", .{current_branch});
+        try stderr.print("  path:   {s}\n", .{current_path});
+    }
+
+    try stderr.writeAll("Removing it would leave this shell in a deleted directory.\n");
+    try stderr.print("Switch to another checkout first (for example: cd {s}).\n\n", .{main_path});
+}
+
+fn printSkipCurrentWorktreeMessage(
+    stderr: anytype,
+    use_color: bool,
+    current_branch: []const u8,
+    current_path: []const u8,
+) !void {
+    if (use_color) {
+        try stderr.print(
+            "\n{s}{s}Warning:{s} excluding current worktree from removal candidates\n",
+            .{ ansi_bold, ansi_yellow, ansi_reset },
+        );
+    } else {
+        try stderr.writeAll("\nWarning: excluding current worktree from removal candidates\n");
+    }
+
+    try stderr.print("  branch: {s}\n", .{current_branch});
+    try stderr.print("  path:   {s}\n", .{current_path});
+    try stderr.writeAll("Remove it from another checkout if needed.\n\n");
 }
 
 fn commandExists(allocator: std.mem.Allocator, name: []const u8) bool {
@@ -651,6 +633,7 @@ fn removeCandidate(
 pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     const stdout = std.io.getStdOut().writer();
     const stderr = std.io.getStdErr().writer();
+    const use_color = shouldUseColor();
 
     const wt_output = git.runGit(allocator, null, &.{ "worktree", "list", "--porcelain" }) catch {
         std.debug.print("Error: not a git repository or git not found\n", .{});
@@ -681,9 +664,14 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
         };
 
         if (isCurrentWorktree(wt_info.path, current_worktree_path)) {
-            std.debug.print("Error: cannot remove the current worktree\n", .{});
-            std.debug.print("Removing {s} would delete this shell's current directory\n", .{wt_info.path});
-            std.debug.print("Switch to another worktree first (for example: cd {s})\n", .{main_path});
+            const current_branch = wt_info.branch orelse "(detached)";
+            try printBlockedCurrentWorktreeMessage(
+                stderr,
+                use_color,
+                current_branch,
+                wt_info.path,
+                main_path,
+            );
             std.process.exit(1);
         }
 
@@ -705,12 +693,13 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     if (split.removable.len == 0) {
         if (split.current_secondary) |current_secondary| {
             const current_branch = current_secondary.branch orelse "(detached)";
-            try stderr.print(
-                "Cannot remove the current worktree '{s}' at {s}\n",
-                .{ current_branch, current_secondary.path },
+            try printBlockedCurrentWorktreeMessage(
+                stderr,
+                use_color,
+                current_branch,
+                current_secondary.path,
+                main_path,
             );
-            try stderr.writeAll("Removing it would leave this shell in a deleted directory.\n");
-            try stderr.print("Switch to another worktree first (for example: cd {s}).\n", .{main_path});
             return;
         }
 
@@ -720,9 +709,11 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
 
     if (split.current_secondary) |current_secondary| {
         const current_branch = current_secondary.branch orelse "(detached)";
-        try stderr.print(
-            "Skipping current worktree '{s}' at {s}; remove it from another checkout.\n",
-            .{ current_branch, current_secondary.path },
+        try printSkipCurrentWorktreeMessage(
+            stderr,
+            use_color,
+            current_branch,
+            current_secondary.path,
         );
     }
 
@@ -738,17 +729,6 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     };
     defer allocator.free(candidates);
 
-    if (shouldUseSingleCandidateConfirmation(candidates)) {
-        const confirmed = try confirmSingleCandidateRemoval(stdout, std.io.getStdIn(), candidates[0], shouldUseColor());
-        if (!confirmed) {
-            try stderr.writeAll("Aborted (no worktree removed)\n");
-            return;
-        }
-
-        try removeCandidate(allocator, candidates[0], main_path, options.force);
-        return;
-    }
-
     const resolved_mode = resolvePickerMode(allocator, options.picker_mode, commandExists) catch |err| {
         switch (err) {
             error.FzfUnavailable => {
@@ -761,8 +741,8 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     };
 
     const selected_index = switch (resolved_mode) {
-        .builtin => try selectViaBuiltin(stdout, std.io.getStdIn(), candidates, shouldUseColor()),
-        .fzf => selectViaFzf(allocator, candidates) catch |err| {
+        .builtin => try selectViaBuiltin(stdout, std.io.getStdIn(), candidates, use_color),
+        .fzf => selectViaFzf(allocator, candidates, use_color) catch |err| {
             switch (err) {
                 error.FzfFailed => {
                     try stderr.writeAll("Error: fzf failed while selecting a worktree\n");
@@ -882,22 +862,6 @@ test "cancel helpers recognize q and control keys" {
     const ctrl_c_text = [_]u8{ctrl_c_key};
     try std.testing.expect(isCancelResponse(&esc_text));
     try std.testing.expect(isCancelResponse(&ctrl_c_text));
-}
-
-test "single candidate confirmation mode is enabled only for one candidate" {
-    const candidate: RemovalCandidate = .{
-        .path = "/tmp/repo--feat",
-        .branch = "feat",
-        .modified = 0,
-        .untracked = 0,
-        .unmerged = 0,
-        .safe = true,
-    };
-
-    const one = [_]RemovalCandidate{candidate};
-    const many = [_]RemovalCandidate{ candidate, candidate };
-    try std.testing.expect(shouldUseSingleCandidateConfirmation(&one));
-    try std.testing.expect(!shouldUseSingleCandidateConfirmation(&many));
 }
 
 test "findWorktreeByBranch matches branch regardless of path naming" {
