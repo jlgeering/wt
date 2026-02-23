@@ -1,3 +1,8 @@
+[[tools."github:Dicklesworthstone/beads_rust"]]
+version = "0.1.14"
+backend = "github:Dicklesworthstone/beads_rust"
+
 [[tools.zig]]
 version = "0.14.1"
 backend = "core:zig"
+"platforms.macos-arm64" = { checksum = "blake3:8de34f5d09d6583630e22c8f039a0647642b7a90cb2ebd82f99b6af609deac3b"}
