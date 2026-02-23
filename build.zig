@@ -56,6 +56,19 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit and integration tests");
     test_step.dependOn(&run_lib_tests.step);
 
+    // Smoke-test help rendering paths so regressions fail `zig build test`.
+    const run_help_root = b.addRunArtifact(exe);
+    run_help_root.addArg("--help");
+    test_step.dependOn(&run_help_root.step);
+
+    const run_help_list = b.addRunArtifact(exe);
+    run_help_list.addArgs(&.{ "list", "--help" });
+    test_step.dependOn(&run_help_list.step);
+
+    const run_help_rm = b.addRunArtifact(exe);
+    run_help_rm.addArgs(&.{ "rm", "--help" });
+    test_step.dependOn(&run_help_rm.step);
+
     const integration_lib_tests = b.addTest(.{
         .root_source_file = b.path("test/integration_lib.zig"),
         .target = target,
