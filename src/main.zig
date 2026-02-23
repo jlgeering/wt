@@ -52,7 +52,7 @@ pub fn main() !void {
 
     var cmd_list = app.createCommand(
         "list",
-        "List all worktrees (columns: WT, BASE, UPSTREAM; use --porcelain for machine parsing)",
+        "List worktrees (WT, BASE, UPSTREAM); use --porcelain for machine output",
     );
     try cmd_list.addArg(Arg.booleanOption("porcelain", null, "Print machine-readable output only"));
     try wt.addSubcommand(cmd_list);
