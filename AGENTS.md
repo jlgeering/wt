@@ -22,6 +22,12 @@ We use mise for tool versions, task execution, and environment setup.
 - Use `mise x -- <tool> ...` for direct tool invocations.
 - Do not rely on globally installed tools when a mise-managed equivalent exists.
 
+## Worktrees
+
+Use `wt` for worktree management.
+
+- Discover commands with `mise x -- wt --help`.
+
 ## ADRs
 
 Propose a new ADR in `docs/adr` for meaningful user-facing behavior/default changes, cross-platform tradeoffs, or policy decisions.

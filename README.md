@@ -75,8 +75,6 @@ Example snippet to place in `AGENTS.md` or `CLAUDE.md`:
 Use `wt` for worktree management.
 
 - Discover commands with `mise x -- wt --help`.
-- Before running a subcommand, check `mise x -- wt <subcommand> --help`.
-- Do not hardcode `wt` flags or flows here; rely on CLI help so instructions stay current.
 ```
 
 ## Shell integration (zsh and bash)
@@ -116,6 +114,7 @@ source ~/.bashrc
 Behavior:
 
 - Running `wt` with no arguments opens a worktree picker and changes directory to the selected worktree.
+- Picker rows include branch, status, and path.
 - Picker backend for no-arg `wt` mirrors `wt rm --picker auto`: use `fzf` when available, otherwise use a built-in numbered prompt.
 - When only one worktree exists, no picker is shown; the wrapper prints a notice and returns without changing directories.
 - The wrapper intercepts `wt new ...` and `wt add ...`.
@@ -143,7 +142,7 @@ After `wt new demo-branch`, `pwd` should show the new worktree directory.
 ## Core command usage
 
 ```bash
-wt list
+wt list [--porcelain]
 wt new|add [--porcelain] <branch> [base]  # add is an alias of new
 wt rm [branch] [-f|--force] [--picker auto|builtin|fzf] [--no-interactive]
 wt init
@@ -169,6 +168,12 @@ Supported shells for `shell-init` are `zsh` and `bash`. This README includes set
 
 - Default mode (human): prints status messages to stderr and does not print the raw path on stdout.
 - `--porcelain` mode (machine): prints exactly the worktree path to stdout.
+
+`wt list` output modes:
+
+- Default mode (human): one worktree per line with readability-focused status summary.
+- `--porcelain` mode (machine): tab-separated fields per line:
+  `current\tbranch\tpath\tstatus\tmodified\tuntracked\tahead\tbehind\thas_upstream`
 
 ## Guided config bootstrap (`wt init`)
 

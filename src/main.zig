@@ -11,6 +11,17 @@ const init_cmd = @import("commands/init.zig");
 const App = yazap.App;
 const Arg = yazap.Arg;
 
+const root_description =
+    "Git worktree manager\n" ++
+    "\n" ++
+    "Quick start:\n" ++
+    "  wt list\n" ++
+    "  wt new <branch> [base]\n" ++
+    "  wt rm [branch]\n" ++
+    "  wt init\n" ++
+    "\n" ++
+    "Use `wt <command> --help` for command details.";
+
 fn normalizeArgvForAliases(
     allocator: std.mem.Allocator,
     argv: []const [:0]u8,
@@ -32,14 +43,16 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var app = App.init(allocator, "wt", "Git worktree manager");
+    var app = App.init(allocator, "wt", root_description);
     defer app.deinit();
 
     var wt = app.rootCommand();
     wt.setProperty(.help_on_empty_args);
     try wt.addArg(Arg.booleanOption("version", 'V', "Print version and exit"));
 
-    try wt.addSubcommand(app.createCommand("list", "List all worktrees"));
+    var cmd_list = app.createCommand("list", "List all worktrees");
+    try cmd_list.addArg(Arg.booleanOption("porcelain", null, "Print machine-readable output only"));
+    try wt.addSubcommand(cmd_list);
 
     var cmd_new = app.createCommand("new", "Create a new worktree (alias: add)");
     try cmd_new.addArg(Arg.booleanOption("porcelain", null, "Print machine-readable output only"));
@@ -70,8 +83,9 @@ pub fn main() !void {
         return;
     }
 
-    if (matches.subcommandMatches("list")) |_| {
-        try list_cmd.run(allocator);
+    if (matches.subcommandMatches("list")) |list_matches| {
+        const porcelain = list_matches.containsArg("porcelain");
+        try list_cmd.run(allocator, porcelain);
     } else if (matches.subcommandMatches("new")) |new_matches| {
         const branch = new_matches.getSingleValue("BRANCH") orelse {
             std.debug.print("Error: branch name required\n", .{});
