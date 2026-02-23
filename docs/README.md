@@ -1,17 +1,35 @@
-# Documentation
+# Documentation Structure
 
-This folder contains detailed `wt` documentation that is intentionally split out from the top-level README.
+This folder contains canonical project documentation.
 
-## Guides
+## Current Folders
 
-- Agent usage guidance: [`agent-usage.md`](agent-usage.md)
-- Shell integration setup and behavior: [`shell-integration.md`](shell-integration.md)
-- Command reference and output contracts: [`command-reference.md`](command-reference.md)
-- Guided bootstrap and config format: [`init-and-config.md`](init-and-config.md)
-- Troubleshooting and diagnostics: [`troubleshooting.md`](troubleshooting.md)
+- `specs/` - Normative behavior and data/output contracts ("what the tool does")
+- `guides/` - Operational and contributor guidance ("how to use and maintain it")
+- `adr/` - Architecture Decision Records ("why we chose it")
 
-## Project docs
+## Folder Indexes
 
-- Release and distribution findings: [`release-distribution.md`](release-distribution.md)
+- Specs index: [`specs/README.md`](specs/README.md)
+- Guides index: [`guides/README.md`](guides/README.md)
 - ADR index: [`adr/README.md`](adr/README.md)
-- Historical plans: [`plans/`](plans/)
+
+## Plan and Archive Lifecycle
+
+Active planning lives outside `docs/`:
+
+- `plans/` (repo root) - Active work-in-progress plans
+
+Archived material lives under `archive/`:
+
+- `archive/plans/` - Completed or superseded plans
+- `archive/explorations/` - Historical prototypes and explorations
+
+Lifecycle:
+
+1. Draft and iterate in `plans/`
+2. Consolidate stable behavior into `docs/specs/`
+3. Keep how-to and operational guidance in `docs/guides/`
+4. Record significant decisions in `docs/adr/`
+5. Move completed/superseded plans to `archive/plans/`
+6. Move exploratory artifacts to `archive/explorations/`
