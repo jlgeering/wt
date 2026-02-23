@@ -31,6 +31,12 @@ pub fn main() !void {
     try cmd_new.addArg(Arg.positional("BASE", "Base ref (default: HEAD)", null));
     try wt.addSubcommand(cmd_new);
 
+    var cmd_add = app.createCommand("add", "Alias for 'new' (create a new worktree)");
+    try cmd_add.addArg(Arg.booleanOption("porcelain", null, "Print machine-readable output only"));
+    try cmd_add.addArg(Arg.positional("BRANCH", "Branch name", null));
+    try cmd_add.addArg(Arg.positional("BASE", "Base ref (default: HEAD)", null));
+    try wt.addSubcommand(cmd_add);
+
     var cmd_rm = app.createCommand("rm", "Remove a worktree");
     try cmd_rm.addArg(Arg.positional("BRANCH", "Branch name (omit to use interactive picker)", null));
     try cmd_rm.addArg(Arg.booleanOption("force", 'f', "Force removal without safety confirmation (dirty/unmerged)"));
@@ -59,6 +65,14 @@ pub fn main() !void {
         };
         const base = new_matches.getSingleValue("BASE") orelse "HEAD";
         const porcelain = new_matches.containsArg("porcelain");
+        try new_cmd.run(allocator, branch, base, porcelain);
+    } else if (matches.subcommandMatches("add")) |add_matches| {
+        const branch = add_matches.getSingleValue("BRANCH") orelse {
+            std.debug.print("Error: branch name required\n", .{});
+            std.process.exit(1);
+        };
+        const base = add_matches.getSingleValue("BASE") orelse "HEAD";
+        const porcelain = add_matches.containsArg("porcelain");
         try new_cmd.run(allocator, branch, base, porcelain);
     } else if (matches.subcommandMatches("rm")) |rm_matches| {
         const picker_raw = rm_matches.getSingleValue("picker") orelse "auto";

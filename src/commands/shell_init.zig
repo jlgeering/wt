@@ -89,9 +89,9 @@ const zsh_init =
     \\    fi
     \\
     \\    case "$1" in
-    \\        new)
+    \\        new|add)
     \\            local output
-    \\            output=$(command wt new --porcelain "${@:2}" 2>/dev/tty)
+    \\            output=$(command wt "$1" --porcelain "${@:2}" 2>/dev/tty)
     \\            local exit_code=$?
     \\            if [ $exit_code -eq 0 ] && [ -n "$output" ] && [ -d "$output" ]; then
     \\                cd "$output"
@@ -195,9 +195,9 @@ const bash_init =
     \\    fi
     \\
     \\    case "$1" in
-    \\        new)
+    \\        new|add)
     \\            local output
-    \\            output=$(command wt new --porcelain "${@:2}" 2>/dev/tty)
+    \\            output=$(command wt "$1" --porcelain "${@:2}" 2>/dev/tty)
     \\            local exit_code=$?
     \\            if [ $exit_code -eq 0 ] && [ -n "$output" ] && [ -d "$output" ]; then
     \\                cd "$output"
@@ -228,7 +228,8 @@ pub fn run(shell: []const u8) !void {
 test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "${1#-}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "new --porcelain") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "new|add") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "\"$1\" --porcelain") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "git worktree list --porcelain") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command -v fzf") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "Only one worktree is available:") != null);
@@ -242,7 +243,8 @@ test "zsh init contains function definition" {
 test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "wt()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "${1#-}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bash_init, "new --porcelain") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "new|add") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "\"$1\" --porcelain") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "git worktree list --porcelain") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "command -v fzf") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "Only one worktree is available:") != null);

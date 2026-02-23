@@ -95,9 +95,9 @@ Behavior:
 - Running `wt` with no arguments opens a worktree picker and changes directory to the selected worktree.
 - Picker backend for no-arg `wt` mirrors `wt rm --picker auto`: use `fzf` when available, otherwise use a built-in numbered prompt.
 - When only one worktree exists, no picker is shown; the wrapper prints a notice and returns without changing directories.
-- The wrapper intercepts `wt new ...`.
-- It calls `wt new --porcelain ...` and captures stdout (the created worktree path).
-- If `wt new` exits successfully and the output is an existing directory, it runs `cd "$output"`.
+- The wrapper intercepts `wt new ...` and `wt add ...`.
+- It calls `wt <new|add> --porcelain ...` and captures stdout (the created worktree path).
+- If `wt new`/`wt add` exits successfully and the output is an existing directory, it runs `cd "$output"`.
 - After changing directories, it prints `Entered worktree: <path>`.
 - All other subcommands are passed through unchanged via `command wt "$@"`.
 
@@ -122,6 +122,7 @@ After `wt new demo-branch`, `pwd` should show the new worktree directory.
 ```bash
 wt list
 wt new [--porcelain] <branch> [base]
+wt add [--porcelain] <branch> [base]  # alias of wt new
 wt rm [branch] [-f|--force] [--picker auto|builtin|fzf] [--no-interactive]
 wt init
 wt --version
