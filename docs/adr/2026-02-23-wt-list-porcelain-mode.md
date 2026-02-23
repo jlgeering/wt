@@ -1,10 +1,12 @@
 # ADR: `wt list` Porcelain Mode
 
-- Status: Proposed
+- Status: Superseded
 - Date: 2026-02-23
 - Decision Makers: wt maintainers
 
 ## Context
+
+Superseded by `2026-02-23-wt-list-status-model-base-upstream.md`.
 
 `wt list` default output is human-oriented and now includes concise status summaries.
 That format is intentionally readable, but brittle for shell scripting and editor integrations.
@@ -12,6 +14,8 @@ That format is intentionally readable, but brittle for shell scripting and edito
 `wt new` already has a porcelain mode, and shell wrappers increasingly depend on stable machine output.
 
 ## Decision
+
+This ADR defined the original `wt list --porcelain` schema.
 
 Add `wt list --porcelain` with one tab-separated row per worktree:
 
@@ -30,6 +34,8 @@ Field semantics:
 9. `has_upstream`: `1` when upstream is configured, else `0`
 
 ## Consequences
+
+This ADR is retained for history only; current behavior is defined in `2026-02-23-wt-list-status-model-base-upstream.md`.
 
 - Scripts can consume `wt list` without parsing aligned human text.
 - Shell integrations can display richer status while staying robust.

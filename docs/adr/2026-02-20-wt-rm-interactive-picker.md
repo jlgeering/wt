@@ -30,7 +30,7 @@ We needed to decide:
    - command exits with guidance to use `wt list` or pass a branch explicitly.
 7. Picker rows include safety context before selection:
    - dirty counts (modified/untracked)
-   - unmerged commit counts when branch-backed
+   - `local-commits` marker when branch-backed and ahead of main checkout
    - detached worktrees are selectable and removable by path
 
 ## Consequences

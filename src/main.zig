@@ -50,7 +50,10 @@ pub fn main() !void {
     wt.setProperty(.help_on_empty_args);
     try wt.addArg(Arg.booleanOption("version", 'V', "Print version and exit"));
 
-    var cmd_list = app.createCommand("list", "List all worktrees");
+    var cmd_list = app.createCommand(
+        "list",
+        "List all worktrees (columns: WT, BASE, UPSTREAM; use --porcelain for machine parsing)",
+    );
     try cmd_list.addArg(Arg.booleanOption("porcelain", null, "Print machine-readable output only"));
     try wt.addSubcommand(cmd_list);
 
@@ -60,10 +63,17 @@ pub fn main() !void {
     try cmd_new.addArg(Arg.positional("BASE", "Base ref (default: HEAD)", null));
     try wt.addSubcommand(cmd_new);
 
-    var cmd_rm = app.createCommand("rm", "Remove a worktree");
+    var cmd_rm = app.createCommand(
+        "rm",
+        "Remove a worktree (picker status: clean|dirty plus optional local-commits)",
+    );
     try cmd_rm.addArg(Arg.positional("BRANCH", "Branch name (omit to use interactive picker)", null));
-    try cmd_rm.addArg(Arg.booleanOption("force", 'f', "Force removal without safety confirmation (dirty/unmerged)"));
-    try cmd_rm.addArg(Arg.singleValueOption("picker", null, "Picker backend for interactive mode: auto|builtin|fzf"));
+    try cmd_rm.addArg(Arg.booleanOption("force", 'f', "Force removal without safety confirmation (dirty/local-commits)"));
+    try cmd_rm.addArg(Arg.singleValueOption(
+        "picker",
+        null,
+        "Picker backend for interactive mode (auto|builtin|fzf)",
+    ));
     try cmd_rm.addArg(Arg.booleanOption("no-interactive", null, "Disable interactive picker when BRANCH is omitted"));
     try wt.addSubcommand(cmd_rm);
 

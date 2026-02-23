@@ -20,7 +20,7 @@ const RemovalCandidate = struct {
     branch: ?[]const u8,
     modified: usize,
     untracked: usize,
-    unmerged: ?usize,
+    has_local_commits: bool,
     safe: bool,
 };
 
@@ -162,23 +162,11 @@ fn formatCandidateSummary(buffer: []u8, candidate: RemovalCandidate) []const u8 
     if (!is_dirty) {
         w.writeAll("clean") catch unreachable;
     } else {
-        var wrote_change = false;
-        if (candidate.modified > 0) {
-            w.print("M:{d}", .{candidate.modified}) catch unreachable;
-            wrote_change = true;
-        }
-        if (candidate.untracked > 0) {
-            if (wrote_change) w.writeAll(" ") catch unreachable;
-            w.print("U:{d}", .{candidate.untracked}) catch unreachable;
-            wrote_change = true;
-        }
-        if (!wrote_change) w.writeAll("changes") catch unreachable;
+        w.writeAll("dirty") catch unreachable;
     }
 
-    if (candidate.unmerged) |count| {
-        if (count > 0) {
-            w.print(", {d} unmerged", .{count}) catch unreachable;
-        }
+    if (candidate.has_local_commits) {
+        w.writeAll(", local-commits") catch unreachable;
     }
 
     return fbs.getWritten();
@@ -499,21 +487,21 @@ fn inspectCandidate(
 
     const status = git.parseStatusPorcelain(status_output);
 
-    var unmerged: ?usize = null;
+    var has_local_commits = false;
     if (wt.branch) |branch| {
-        unmerged = try git.countUnmergedCommits(allocator, main_path, "HEAD", branch);
+        const unmerged = try git.countUnmergedCommits(allocator, main_path, "HEAD", branch);
+        has_local_commits = unmerged > 0;
     }
 
     const has_dirty = status.modified > 0 or status.untracked > 0;
-    const has_unmerged = if (unmerged) |count| count > 0 else false;
 
     return .{
         .path = wt.path,
         .branch = wt.branch,
         .modified = status.modified,
         .untracked = status.untracked,
-        .unmerged = unmerged,
-        .safe = !has_dirty and !has_unmerged,
+        .has_local_commits = has_local_commits,
+        .safe = !has_dirty and !has_local_commits,
     };
 }
 
@@ -539,16 +527,14 @@ fn confirmUnsafeRemoval(
     target_name: []const u8,
     modified: usize,
     untracked: usize,
-    unmerged_commits: ?usize,
+    has_local_commits: bool,
 ) !bool {
     try stdout.print("Warning: unsafe worktree removal for '{s}'\n", .{target_name});
     if (modified > 0 or untracked > 0) {
         try stdout.print("- dirty worktree: {d} modified, {d} untracked\n", .{ modified, untracked });
     }
-    if (unmerged_commits) |count| {
-        if (count > 0) {
-            try stdout.print("- branch has {d} unmerged commit(s) vs HEAD\n", .{count});
-        }
+    if (has_local_commits) {
+        try stdout.writeAll("- branch has local commits not in main checkout\n");
     }
     try stdout.print("Remove anyway? [y/N]: ", .{});
 
@@ -585,7 +571,7 @@ fn removeCandidate(
             target_name,
             candidate.modified,
             candidate.untracked,
-            candidate.unmerged,
+            candidate.has_local_commits,
         ) catch {
             std.debug.print("Error: failed to read confirmation\n", .{});
             std.process.exit(1);
@@ -617,7 +603,7 @@ fn removeCandidate(
         .delete => {
             const branch = candidate.branch.?;
             const del_result = git.runGit(allocator, main_path, &.{ "branch", "-d", branch }) catch {
-                std.debug.print("Branch '{s}' kept (has unmerged commits)\n", .{branch});
+                std.debug.print("Branch '{s}' kept (has local commits)\n", .{branch});
                 return;
             };
             allocator.free(del_result);
@@ -813,7 +799,7 @@ test "branchDeleteAction skips detached worktrees" {
         .branch = null,
         .modified = 0,
         .untracked = 0,
-        .unmerged = null,
+        .has_local_commits = false,
         .safe = true,
     };
 
@@ -822,7 +808,7 @@ test "branchDeleteAction skips detached worktrees" {
         .branch = "feat",
         .modified = 0,
         .untracked = 0,
-        .unmerged = 0,
+        .has_local_commits = false,
         .safe = true,
     };
 
@@ -830,21 +816,20 @@ test "branchDeleteAction skips detached worktrees" {
     try std.testing.expectEqual(BranchDeleteAction.delete, branchDeleteAction(branched));
 }
 
-test "formatCandidateSummary uses compact dirty summary and unmerged details" {
+test "formatCandidateSummary uses dirty and local-commits markers" {
     const candidate: RemovalCandidate = .{
         .path = "/tmp/repo--feat",
         .branch = "feat",
         .modified = 2,
         .untracked = 1,
-        .unmerged = 3,
+        .has_local_commits = true,
         .safe = false,
     };
 
     var buf: [128]u8 = undefined;
     const summary = formatCandidateSummary(&buf, candidate);
-    try std.testing.expect(std.mem.indexOf(u8, summary, "M:2") != null);
-    try std.testing.expect(std.mem.indexOf(u8, summary, "U:1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, summary, "3 unmerged") != null);
+    try std.testing.expect(std.mem.indexOf(u8, summary, "dirty") != null);
+    try std.testing.expect(std.mem.indexOf(u8, summary, "local-commits") != null);
 }
 
 test "cancel helpers recognize q and control keys" {

@@ -179,9 +179,43 @@ Supported shells for `shell-init` are `zsh` and `bash`. This README includes set
 
 `wt list` output modes:
 
-- Default mode (human): one worktree per line with readability-focused status summary.
+- Default mode (human): table with explicit columns:
+  `CUR BRANCH WT BASE UPSTREAM PATH`
 - `--porcelain` mode (machine): tab-separated fields per line:
-  `current\tbranch\tpath\tstatus\tmodified\tuntracked\tahead\tbehind\thas_upstream`
+  `current\tbranch\tpath\twt\ttracked_changes\tuntracked\tbase_ref\tbase_ahead\tbase_behind\thas_upstream\tupstream_ahead\tupstream_behind`
+
+Column semantics (human):
+
+- `WT`: `clean`, `dirty`, or `unknown`.
+- `BASE`: divergence of this worktree branch vs main worktree branch:
+  - `=` in sync
+  - `\u2191<n>` ahead of main
+  - `\u2193<n>` behind main
+  - `\u2191<n>\u2193<n>` diverged both ways
+  - `-` unavailable (for example detached or no base branch)
+  - `unknown` when divergence inspection fails
+- `UPSTREAM`: divergence of this worktree branch vs configured upstream, using the same symbols as `BASE` (`=` / arrows / `-` / `unknown`).
+
+Example (`wt list` human output row with divergences):
+
+```text
+*   feat-x               dirty    \u21912      \u21931      /Users/jlg/src/wt--feat-x
+```
+
+Porcelain field semantics:
+
+- `wt`: `clean`, `dirty`, or `unknown`.
+- `tracked_changes`: tracked status-entry count (modified/deleted/renamed/etc).
+- `untracked`: untracked entry count.
+- `base_ref`: main worktree branch name, or `-` when unavailable.
+- `base_ahead` / `base_behind`: commit counts vs `base_ref`; `-1` means unavailable/unknown.
+- `has_upstream`: `1` when upstream is configured, else `0`.
+- `upstream_ahead` / `upstream_behind`: commit counts vs upstream; `-1` means unavailable/unknown.
+
+Related picker semantics:
+
+- `wt rm` picker rows show `clean`/`dirty` and optional `local-commits` (no count).
+- shell integration (`wt` with no args after `wt shell-init`) consumes `wt list --porcelain` and displays `WT`, `BASE`, and `UPSTREAM` columns.
 
 ## Guided config bootstrap (`wt init`)
 

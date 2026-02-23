@@ -35,50 +35,63 @@ const zsh_init =
     \\
     \\        local picker_rows
     \\        picker_rows=$(printf '%s\n' "$worktrees" | awk -F '\t' '
-    \\            NF < 9 { next }
+    \\            NF < 12 { next }
     \\            {
     \\                branch = $2
     \\                path = $3
-    \\                state = $4
-    \\                modified = $5 + 0
-    \\                untracked = $6 + 0
-    \\                ahead = $7 + 0
-    \\                behind = $8 + 0
+    \\                wt = $4
+    \\                base_ahead = $8 + 0
+    \\                base_behind = $9 + 0
+    \\                has_upstream = $10 + 0
+    \\                upstream_ahead = $11 + 0
+    \\                upstream_behind = $12 + 0
     \\
-    \\                summary = state
-    \\                if (state == "dirty") {
-    \\                    summary = ""
-    \\                    if (modified > 0) {
-    \\                        summary = sprintf("M:%d", modified)
-    \\                    }
-    \\                    if (untracked > 0) {
-    \\                        if (length(summary) > 0) {
-    \\                            summary = sprintf("%s U:%d", summary, untracked)
-    \\                        } else {
-    \\                            summary = sprintf("U:%d", untracked)
+    \\                base = "-"
+    \\                if (base_ahead >= 0 && base_behind >= 0) {
+    \\                    if (base_ahead == 0 && base_behind == 0) {
+    \\                        base = "="
+    \\                    } else {
+    \\                        base = ""
+    \\                        if (base_ahead > 0) {
+    \\                            base = sprintf("%s \342\206\221%d", base, base_ahead)
     \\                        }
+    \\                        if (base_behind > 0) {
+    \\                            base = sprintf("%s \342\206\223%d", base, base_behind)
+    \\                        }
+    \\                        sub(/^ /, "", base)
     \\                    }
-    \\                    if (length(summary) == 0) {
-    \\                        summary = "changes"
-    \\                    }
-    \\                }
-    \\                if (ahead > 0) {
-    \\                    summary = sprintf("%s ^%d", summary, ahead)
-    \\                }
-    \\                if (behind > 0) {
-    \\                    summary = sprintf("%s v%d", summary, behind)
     \\                }
     \\
-    \\                printf "%s\t%-20s  %-20s  %s\n", path, branch, summary, path
+    \\                upstream = "-"
+    \\                if (has_upstream == 1) {
+    \\                    if (upstream_ahead >= 0 && upstream_behind >= 0) {
+    \\                        if (upstream_ahead == 0 && upstream_behind == 0) {
+    \\                            upstream = "="
+    \\                        } else {
+    \\                            upstream = ""
+    \\                            if (upstream_ahead > 0) {
+    \\                                upstream = sprintf("%s \342\206\221%d", upstream, upstream_ahead)
+    \\                            }
+    \\                            if (upstream_behind > 0) {
+    \\                                upstream = sprintf("%s \342\206\223%d", upstream, upstream_behind)
+    \\                            }
+    \\                            sub(/^ /, "", upstream)
+    \\                        }
+    \\                    } else {
+    \\                        upstream = "unknown"
+    \\                    }
+    \\                }
+    \\
+    \\                printf "%s\t%-20s\t%-8s\t%-9s\t%-9s\t%s\n", path, branch, wt, base, upstream, path
     \\            }
     \\        ')
     \\
     \\        local selected_path=""
     \\        if command -v fzf >/dev/null 2>&1; then
-    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --no-color --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2 --header "BRANCH                STATUS               PATH" | cut -f1)
+    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --no-color --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2..5 --header "BRANCH                WT       BASE      UPSTREAM  PATH" | cut -f1)
     \\        else
     \\            echo "Choose a worktree:"
-    \\            printf '%s\n' "$picker_rows" | awk -F '\t' '{ printf "  [%d] %s\n", NR, $2 }'
+    \\            printf '%s\n' "$picker_rows" | awk -F '\t' '{ printf "  [%d] %-20s  %-8s  %-9s  %-9s\n", NR, $2, $3, $4, $5 }'
     \\            while true; do
     \\                printf "Select worktree [1-%s], q to quit: " "$count"
     \\                local selection
@@ -168,50 +181,63 @@ const bash_init =
     \\
     \\        local picker_rows
     \\        picker_rows=$(printf '%s\n' "$worktrees" | awk -F '\t' '
-    \\            NF < 9 { next }
+    \\            NF < 12 { next }
     \\            {
     \\                branch = $2
     \\                path = $3
-    \\                state = $4
-    \\                modified = $5 + 0
-    \\                untracked = $6 + 0
-    \\                ahead = $7 + 0
-    \\                behind = $8 + 0
+    \\                wt = $4
+    \\                base_ahead = $8 + 0
+    \\                base_behind = $9 + 0
+    \\                has_upstream = $10 + 0
+    \\                upstream_ahead = $11 + 0
+    \\                upstream_behind = $12 + 0
     \\
-    \\                summary = state
-    \\                if (state == "dirty") {
-    \\                    summary = ""
-    \\                    if (modified > 0) {
-    \\                        summary = sprintf("M:%d", modified)
-    \\                    }
-    \\                    if (untracked > 0) {
-    \\                        if (length(summary) > 0) {
-    \\                            summary = sprintf("%s U:%d", summary, untracked)
-    \\                        } else {
-    \\                            summary = sprintf("U:%d", untracked)
+    \\                base = "-"
+    \\                if (base_ahead >= 0 && base_behind >= 0) {
+    \\                    if (base_ahead == 0 && base_behind == 0) {
+    \\                        base = "="
+    \\                    } else {
+    \\                        base = ""
+    \\                        if (base_ahead > 0) {
+    \\                            base = sprintf("%s \342\206\221%d", base, base_ahead)
     \\                        }
+    \\                        if (base_behind > 0) {
+    \\                            base = sprintf("%s \342\206\223%d", base, base_behind)
+    \\                        }
+    \\                        sub(/^ /, "", base)
     \\                    }
-    \\                    if (length(summary) == 0) {
-    \\                        summary = "changes"
-    \\                    }
-    \\                }
-    \\                if (ahead > 0) {
-    \\                    summary = sprintf("%s ^%d", summary, ahead)
-    \\                }
-    \\                if (behind > 0) {
-    \\                    summary = sprintf("%s v%d", summary, behind)
     \\                }
     \\
-    \\                printf "%s\t%-20s  %-20s  %s\n", path, branch, summary, path
+    \\                upstream = "-"
+    \\                if (has_upstream == 1) {
+    \\                    if (upstream_ahead >= 0 && upstream_behind >= 0) {
+    \\                        if (upstream_ahead == 0 && upstream_behind == 0) {
+    \\                            upstream = "="
+    \\                        } else {
+    \\                            upstream = ""
+    \\                            if (upstream_ahead > 0) {
+    \\                                upstream = sprintf("%s \342\206\221%d", upstream, upstream_ahead)
+    \\                            }
+    \\                            if (upstream_behind > 0) {
+    \\                                upstream = sprintf("%s \342\206\223%d", upstream, upstream_behind)
+    \\                            }
+    \\                            sub(/^ /, "", upstream)
+    \\                        }
+    \\                    } else {
+    \\                        upstream = "unknown"
+    \\                    }
+    \\                }
+    \\
+    \\                printf "%s\t%-20s\t%-8s\t%-9s\t%-9s\t%s\n", path, branch, wt, base, upstream, path
     \\            }
     \\        ')
     \\
     \\        local selected_path=""
     \\        if command -v fzf >/dev/null 2>&1; then
-    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --no-color --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2 --header "BRANCH                STATUS               PATH" | cut -f1)
+    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --no-color --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2..5 --header "BRANCH                WT       BASE      UPSTREAM  PATH" | cut -f1)
     \\        else
     \\            echo "Choose a worktree:"
-    \\            printf '%s\n' "$picker_rows" | awk -F '\t' '{ printf "  [%d] %s\n", NR, $2 }'
+    \\            printf '%s\n' "$picker_rows" | awk -F '\t' '{ printf "  [%d] %-20s  %-8s  %-9s  %-9s\n", NR, $2, $3, $4, $5 }'
     \\            while true; do
     \\                printf "Select worktree [1-%s], q to quit: " "$count"
     \\                local selection
