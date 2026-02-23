@@ -56,6 +56,29 @@ mise run install
 mise run run -- --help
 ```
 
+## Agent docs best practices (`AGENTS.md` / `CLOUD.md`)
+
+Keep agent instructions about `wt` short and stable. Do not duplicate command details, flags, or workflows in agent policy files.
+
+Recommended pattern:
+
+- Tell agents to use `wt` for worktree operations.
+- Tell agents to discover current usage at runtime via `--help`.
+- Prefer `mise x -- wt ...` in repos that enforce mise-managed tooling.
+- Keep only durable policy in `AGENTS.md`/`CLOUD.md`; let CLI help text be the source of truth as `wt` evolves.
+
+Example snippet to place in `AGENTS.md` or `CLOUD.md`:
+
+```md
+## Worktrees
+
+Use `wt` for worktree management.
+
+- Discover commands with `mise x -- wt --help`.
+- Before running a subcommand, check `mise x -- wt <subcommand> --help`.
+- Do not hardcode `wt` flags or flows here; rely on CLI help so instructions stay current.
+```
+
 ## Shell integration (zsh and bash)
 
 ### zsh
@@ -121,8 +144,7 @@ After `wt new demo-branch`, `pwd` should show the new worktree directory.
 
 ```bash
 wt list
-wt new [--porcelain] <branch> [base]
-wt add [--porcelain] <branch> [base]  # alias of wt new
+wt new|add [--porcelain] <branch> [base]  # add is an alias of new
 wt rm [branch] [-f|--force] [--picker auto|builtin|fzf] [--no-interactive]
 wt init
 wt --version

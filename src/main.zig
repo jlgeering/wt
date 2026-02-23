@@ -11,6 +11,22 @@ const init_cmd = @import("commands/init.zig");
 const App = yazap.App;
 const Arg = yazap.Arg;
 
+fn normalizeArgvForAliases(
+    allocator: std.mem.Allocator,
+    argv: []const [:0]u8,
+) ![][:0]const u8 {
+    var normalized = try allocator.alloc([:0]const u8, argv.len);
+    for (argv, 0..) |arg, idx| {
+        normalized[idx] = arg;
+    }
+
+    if (normalized.len > 1 and std.mem.eql(u8, normalized[1], "add")) {
+        normalized[1] = "new";
+    }
+
+    return normalized;
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -25,17 +41,11 @@ pub fn main() !void {
 
     try wt.addSubcommand(app.createCommand("list", "List all worktrees"));
 
-    var cmd_new = app.createCommand("new", "Create a new worktree");
+    var cmd_new = app.createCommand("new", "Create a new worktree (alias: add)");
     try cmd_new.addArg(Arg.booleanOption("porcelain", null, "Print machine-readable output only"));
     try cmd_new.addArg(Arg.positional("BRANCH", "Branch name", null));
     try cmd_new.addArg(Arg.positional("BASE", "Base ref (default: HEAD)", null));
     try wt.addSubcommand(cmd_new);
-
-    var cmd_add = app.createCommand("add", "Alias for 'new' (create a new worktree)");
-    try cmd_add.addArg(Arg.booleanOption("porcelain", null, "Print machine-readable output only"));
-    try cmd_add.addArg(Arg.positional("BRANCH", "Branch name", null));
-    try cmd_add.addArg(Arg.positional("BASE", "Base ref (default: HEAD)", null));
-    try wt.addSubcommand(cmd_add);
 
     var cmd_rm = app.createCommand("rm", "Remove a worktree");
     try cmd_rm.addArg(Arg.positional("BRANCH", "Branch name (omit to use interactive picker)", null));
@@ -50,7 +60,11 @@ pub fn main() !void {
 
     try wt.addSubcommand(app.createCommand("init", "Create or upgrade .wt.toml with guided recommendations"));
 
-    const matches = try app.parseProcess();
+    app.process_args = try std.process.argsAlloc(allocator);
+    const parse_argv = try normalizeArgvForAliases(allocator, app.process_args.?);
+    defer allocator.free(parse_argv);
+
+    const matches = try app.parseFrom(parse_argv[1..]);
     if (matches.containsArg("version")) {
         std.debug.print("wt {s} ({s})\n", .{ build_options.version, build_options.git_sha });
         return;
@@ -65,14 +79,6 @@ pub fn main() !void {
         };
         const base = new_matches.getSingleValue("BASE") orelse "HEAD";
         const porcelain = new_matches.containsArg("porcelain");
-        try new_cmd.run(allocator, branch, base, porcelain);
-    } else if (matches.subcommandMatches("add")) |add_matches| {
-        const branch = add_matches.getSingleValue("BRANCH") orelse {
-            std.debug.print("Error: branch name required\n", .{});
-            std.process.exit(1);
-        };
-        const base = add_matches.getSingleValue("BASE") orelse "HEAD";
-        const porcelain = add_matches.containsArg("porcelain");
         try new_cmd.run(allocator, branch, base, porcelain);
     } else if (matches.subcommandMatches("rm")) |rm_matches| {
         const picker_raw = rm_matches.getSingleValue("picker") orelse "auto";

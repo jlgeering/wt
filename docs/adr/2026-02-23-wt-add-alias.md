@@ -13,15 +13,16 @@ This mismatch creates avoidable friction when switching from project-local task 
 
 ## Decision
 
-1. Add a first-class `wt add` subcommand as an alias of `wt new`.
+1. Add `wt add` as a compatibility alias that normalizes to `wt new` at argv parsing time.
 2. Keep argument and output behavior identical:
    - `wt add [--porcelain] <branch> [base]`
 3. Keep shell integration parity:
    - wrappers that auto-`cd` on creation must treat both `new` and `add` the same.
-4. Keep `wt new` as-is for backward compatibility and documentation continuity.
+4. Keep help output focused on `wt new`; do not add a duplicate visible subcommand line for `add`.
 
 ## Consequences
 
 - Users can choose whichever verb is more intuitive (`new` or `add`) without behavior drift.
 - Existing scripts using `wt new` remain valid.
+- `wt --help` stays concise with one canonical creation command.
 - Shell-init wrapper behavior remains consistent across both creation verbs.
