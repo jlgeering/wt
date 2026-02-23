@@ -57,6 +57,47 @@ fn findWorktreeByBranch(worktrees: []const git.WorktreeInfo, branch: []const u8)
     return null;
 }
 
+const SecondarySplit = struct {
+    removable: []git.WorktreeInfo,
+    current_secondary: ?git.WorktreeInfo,
+};
+
+fn detectCurrentWorktreePath(allocator: std.mem.Allocator) ![]u8 {
+    const output = try git.runGit(allocator, null, &.{ "rev-parse", "--show-toplevel" });
+    defer allocator.free(output);
+
+    const trimmed = std.mem.trim(u8, output, " \t\r\n");
+    if (trimmed.len == 0) return error.GitCommandFailed;
+    return allocator.dupe(u8, trimmed);
+}
+
+fn isCurrentWorktree(path: []const u8, current_worktree_path: []const u8) bool {
+    return std.mem.eql(u8, path, current_worktree_path);
+}
+
+fn splitSecondaryWorktrees(
+    allocator: std.mem.Allocator,
+    secondary_worktrees: []const git.WorktreeInfo,
+    current_worktree_path: []const u8,
+) !SecondarySplit {
+    var removable = std.ArrayList(git.WorktreeInfo).init(allocator);
+    errdefer removable.deinit();
+
+    var current_secondary: ?git.WorktreeInfo = null;
+    for (secondary_worktrees) |wt| {
+        if (isCurrentWorktree(wt.path, current_worktree_path)) {
+            current_secondary = wt;
+            continue;
+        }
+        try removable.append(wt);
+    }
+
+    return .{
+        .removable = try removable.toOwnedSlice(),
+        .current_secondary = current_secondary,
+    };
+}
+
 fn isConfirmedResponse(input: []const u8) bool {
     const trimmed = std.mem.trim(u8, input, " \t\r\n");
     return std.ascii.eqlIgnoreCase(trimmed, "y") or std.ascii.eqlIgnoreCase(trimmed, "yes");
@@ -625,6 +666,12 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
         return;
     }
 
+    const current_worktree_path = detectCurrentWorktreePath(allocator) catch {
+        std.debug.print("Error: could not determine current worktree path\n", .{});
+        std.process.exit(1);
+    };
+    defer allocator.free(current_worktree_path);
+
     const main_path = worktrees[0].path;
 
     if (options.branch_arg) |branch| {
@@ -632,6 +679,13 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
             std.debug.print("Error: no worktree found for branch '{s}'\n", .{branch});
             std.process.exit(1);
         };
+
+        if (isCurrentWorktree(wt_info.path, current_worktree_path)) {
+            std.debug.print("Error: cannot remove the current worktree\n", .{});
+            std.debug.print("Removing {s} would delete this shell's current directory\n", .{wt_info.path});
+            std.debug.print("Switch to another worktree first (for example: cd {s})\n", .{main_path});
+            std.process.exit(1);
+        }
 
         const candidate = inspectCandidate(allocator, main_path, wt_info) catch {
             std.debug.print("Error: could not inspect worktree for branch '{s}'\n", .{branch});
@@ -642,13 +696,43 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
         return;
     }
 
+    const split = splitSecondaryWorktrees(allocator, worktrees[1..], current_worktree_path) catch {
+        std.debug.print("Error: could not build worktree removal candidates\n", .{});
+        std.process.exit(1);
+    };
+    defer allocator.free(split.removable);
+
+    if (split.removable.len == 0) {
+        if (split.current_secondary) |current_secondary| {
+            const current_branch = current_secondary.branch orelse "(detached)";
+            try stderr.print(
+                "Cannot remove the current worktree '{s}' at {s}\n",
+                .{ current_branch, current_secondary.path },
+            );
+            try stderr.writeAll("Removing it would leave this shell in a deleted directory.\n");
+            try stderr.print("Switch to another worktree first (for example: cd {s}).\n", .{main_path});
+            return;
+        }
+
+        std.debug.print("No secondary worktrees to remove\n", .{});
+        return;
+    }
+
+    if (split.current_secondary) |current_secondary| {
+        const current_branch = current_secondary.branch orelse "(detached)";
+        try stderr.print(
+            "Skipping current worktree '{s}' at {s}; remove it from another checkout.\n",
+            .{ current_branch, current_secondary.path },
+        );
+    }
+
     if (options.no_interactive or !isInteractiveSession()) {
         try stderr.writeAll("Error: wt rm without a branch requires an interactive terminal\n");
         try stderr.writeAll("Use `wt list` to inspect worktrees, or pass a branch to `wt rm <branch>`.\n");
         std.process.exit(1);
     }
 
-    const candidates = buildCandidates(allocator, main_path, worktrees[1..]) catch {
+    const candidates = buildCandidates(allocator, main_path, split.removable) catch {
         std.debug.print("Error: could not build worktree removal candidates\n", .{});
         std.process.exit(1);
     };
@@ -834,4 +918,32 @@ test "findWorktreeByBranch skips main worktree" {
 
     const found = findWorktreeByBranch(&worktrees, "main");
     try std.testing.expect(found == null);
+}
+
+test "splitSecondaryWorktrees excludes current secondary worktree" {
+    const secondary = [_]git.WorktreeInfo{
+        .{ .path = "/tmp/repo--feat-a", .head = "a", .branch = "feat-a", .is_bare = false },
+        .{ .path = "/tmp/repo--feat-b", .head = "b", .branch = "feat-b", .is_bare = false },
+    };
+
+    const split = try splitSecondaryWorktrees(std.testing.allocator, &secondary, "/tmp/repo--feat-b");
+    defer std.testing.allocator.free(split.removable);
+
+    try std.testing.expectEqual(@as(usize, 1), split.removable.len);
+    try std.testing.expectEqualStrings("/tmp/repo--feat-a", split.removable[0].path);
+    try std.testing.expect(split.current_secondary != null);
+    try std.testing.expectEqualStrings("/tmp/repo--feat-b", split.current_secondary.?.path);
+}
+
+test "splitSecondaryWorktrees keeps all secondaries when current is main" {
+    const secondary = [_]git.WorktreeInfo{
+        .{ .path = "/tmp/repo--feat-a", .head = "a", .branch = "feat-a", .is_bare = false },
+        .{ .path = "/tmp/repo--feat-b", .head = "b", .branch = "feat-b", .is_bare = false },
+    };
+
+    const split = try splitSecondaryWorktrees(std.testing.allocator, &secondary, "/tmp/repo");
+    defer std.testing.allocator.free(split.removable);
+
+    try std.testing.expectEqual(@as(usize, 2), split.removable.len);
+    try std.testing.expect(split.current_secondary == null);
 }
