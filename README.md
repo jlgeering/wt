@@ -276,3 +276,7 @@ wt list
 wt new test-branch
 wt rm test-branch
 ```
+
+## Release distribution planning
+
+Current release/distribution findings are documented in `docs/release-distribution.md`.
