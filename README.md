@@ -30,7 +30,7 @@ cp zig-out/bin/wt ~/.local/bin/wt
 wt --help
 ```
 
-Make sure `~/.local/bin` is on your `PATH`. For zsh, add this to `~/.zshrc` if needed:
+Make sure `~/.local/bin` is on your `PATH`. For zsh or bash, add this to your startup file (`~/.zshrc` or `~/.bashrc`) if needed:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -56,18 +56,38 @@ mise run install
 mise run run -- --help
 ```
 
-## Shell integration (zsh)
+## Shell integration (zsh and bash)
+
+### zsh
 
 Add the integration function to your `~/.zshrc`:
 
 ```bash
-eval "$(wt shell-init zsh)"
+if command -v wt >/dev/null 2>&1; then
+  eval "$(wt shell-init zsh)"
+fi
 ```
 
 Reload your shell:
 
 ```bash
 source ~/.zshrc
+```
+
+### bash
+
+Add the integration function to your `~/.bashrc`:
+
+```bash
+if command -v wt >/dev/null 2>&1; then
+  eval "$(wt shell-init bash)"
+fi
+```
+
+Reload your shell:
+
+```bash
+source ~/.bashrc
 ```
 
 Behavior:
@@ -103,7 +123,7 @@ wt --version
 wt shell-init <shell>
 ```
 
-Supported shells for `shell-init` are `zsh` and `bash`. This README documents zsh integration as the primary workflow.
+Supported shells for `shell-init` are `zsh` and `bash`. This README includes setup steps for both shells.
 
 ### `wt rm` interaction model
 
@@ -191,10 +211,10 @@ Setup semantics:
   - You are likely using Zig `0.15.x`. Switch to Zig `0.14.x`.
 - `wt: command not found` after install:
   - Ensure `~/.local/bin` is on your `PATH`, then restart your shell.
-- zsh integration does not change directory after `wt new`:
+- zsh/bash integration does not change directory after `wt new`:
   - Run `type wt` and confirm `wt` is a shell function.
-  - Re-run `source ~/.zshrc`.
-  - Confirm your function includes `eval "$(wt shell-init zsh)"`.
+  - Re-run `source ~/.zshrc` (zsh) or `source ~/.bashrc` (bash).
+  - Confirm your startup file includes the guarded `if command -v wt ...; then eval "$(wt shell-init <shell>)"; fi` snippet.
 - `wt rm --picker fzf` fails with picker unavailable:
   - Install `fzf`, or run `wt rm --picker builtin`.
 - Unsure whether function or binary is running:
