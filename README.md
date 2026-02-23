@@ -56,7 +56,7 @@ mise run install
 mise run run -- --help
 ```
 
-## Agent docs best practices (`AGENTS.md` / `CLOUD.md`)
+## Agent docs best practices (`AGENTS.md` / `CLAUDE.md`)
 
 Keep agent instructions about `wt` short and stable. Do not duplicate command details, flags, or workflows in agent policy files.
 
@@ -65,9 +65,9 @@ Recommended pattern:
 - Tell agents to use `wt` for worktree operations.
 - Tell agents to discover current usage at runtime via `--help`.
 - Prefer `mise x -- wt ...` in repos that enforce mise-managed tooling.
-- Keep only durable policy in `AGENTS.md`/`CLOUD.md`; let CLI help text be the source of truth as `wt` evolves.
+- Keep only durable policy in `AGENTS.md`/`CLAUDE.md`; let CLI help text be the source of truth as `wt` evolves.
 
-Example snippet to place in `AGENTS.md` or `CLOUD.md`:
+Example snippet to place in `AGENTS.md` or `CLAUDE.md`:
 
 ```md
 ## Worktrees
