@@ -46,12 +46,15 @@ const zsh_init =
     \\            return 0
     \\        fi
     \\
+    \\        local picker_rows
+    \\        picker_rows=$(printf '%s\n' "$worktrees" | awk -F '\t' '{ printf "%s\t%-20s  %s\n", $2, $1, $2 }')
+    \\
     \\        local selected_path=""
     \\        if command -v fzf >/dev/null 2>&1; then
-    \\            selected_path=$(printf '%s\n' "$worktrees" | fzf --prompt "Worktree > " --height 40% --reverse --no-multi | cut -f2-)
+    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2 --header "BRANCH                PATH" | cut -f1)
     \\        else
     \\            echo "Choose a worktree:"
-    \\            printf '%s\n' "$worktrees" | awk -F '\t' '{ printf "  [%d] %-20s %s\n", NR, $1, $2 }'
+    \\            printf '%s\n' "$picker_rows" | awk -F '\t' '{ printf "  [%d] %s\n", NR, $2 }'
     \\            while true; do
     \\                printf "Select worktree [1-%s], q to quit: " "$count"
     \\                local selection
@@ -71,7 +74,7 @@ const zsh_init =
     \\                    continue
     \\                fi
     \\
-    \\                selected_path=$(printf '%s\n' "$worktrees" | sed -n "${selection}p" | cut -f2-)
+    \\                selected_path=$(printf '%s\n' "$picker_rows" | sed -n "${selection}p" | cut -f1)
     \\                break
     \\            done
     \\        fi
@@ -152,12 +155,15 @@ const bash_init =
     \\            return 0
     \\        fi
     \\
+    \\        local picker_rows
+    \\        picker_rows=$(printf '%s\n' "$worktrees" | awk -F '\t' '{ printf "%s\t%-20s  %s\n", $2, $1, $2 }')
+    \\
     \\        local selected_path=""
     \\        if command -v fzf >/dev/null 2>&1; then
-    \\            selected_path=$(printf '%s\n' "$worktrees" | fzf --prompt "Worktree > " --height 40% --reverse --no-multi | cut -f2-)
+    \\            selected_path=$(printf '%s\n' "$picker_rows" | fzf --prompt "Worktree > " --height 40% --reverse --no-multi --delimiter $'\t' --with-nth 2 --header "BRANCH                PATH" | cut -f1)
     \\        else
     \\            echo "Choose a worktree:"
-    \\            printf '%s\n' "$worktrees" | awk -F '\t' '{ printf "  [%d] %-20s %s\n", NR, $1, $2 }'
+    \\            printf '%s\n' "$picker_rows" | awk -F '\t' '{ printf "  [%d] %s\n", NR, $2 }'
     \\            while true; do
     \\                printf "Select worktree [1-%s], q to quit: " "$count"
     \\                local selection
@@ -177,7 +183,7 @@ const bash_init =
     \\                    continue
     \\                fi
     \\
-    \\                selected_path=$(printf '%s\n' "$worktrees" | sed -n "${selection}p" | cut -f2-)
+    \\                selected_path=$(printf '%s\n' "$picker_rows" | sed -n "${selection}p" | cut -f1)
     \\                break
     \\            done
     \\        fi
