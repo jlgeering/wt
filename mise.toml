@@ -10,6 +10,14 @@ run = "zig build"
 description = "Run unit tests"
 run = "zig build test"
 
+[tasks.format]
+description = "Format Zig source files"
+run = "zig fmt build.zig src test"
+
+[tasks.lint]
+description = "Check Zig formatting"
+run = "zig fmt --check build.zig src test"
+
 [tasks.run]
 description = "Build and run wt with passthrough args"
 run = "zig build run -- {{arg(rest=true)}}"
