@@ -2,6 +2,7 @@ const std = @import("std");
 const git = @import("../lib/git.zig");
 const picker_format = @import("../lib/picker_format.zig");
 const worktree_status = @import("../lib/worktree_status.zig");
+const ui = @import("../lib/ui.zig");
 
 pub const PickerMode = enum {
     auto,
@@ -74,15 +75,43 @@ fn selectViaBuiltin(
     stderr: anytype,
     stdin_file: std.fs.File,
     rows: []const worktree_status.WorktreeRow,
+    use_color: bool,
 ) !?usize {
-    try stderr.writeAll("Choose a worktree:\n");
+    if (use_color) {
+        try stderr.print("{s}{s}{s}\n", .{ ui.ansi.bold, "Choose a worktree:", ui.ansi.reset });
+    } else {
+        try stderr.writeAll("Choose a worktree:\n");
+    }
 
     for (rows, 0..) |row, idx| {
-        var summary_buf: [128]u8 = undefined;
-        const summary = worktree_status.pickerStatusSummary(row, &summary_buf);
-        var display_buf: [512]u8 = undefined;
+        var raw_summary_buf: [128]u8 = undefined;
+        const raw_summary = worktree_status.pickerStatusSummary(row, &raw_summary_buf);
+        var summary_buf: [192]u8 = undefined;
+        const summary = if (use_color) blk: {
+            const summary_color: []const u8 = if (!row.status_known)
+                ui.ansi.yellow
+            else if (row.modified == 0 and row.untracked == 0 and row.ahead == 0 and row.behind == 0)
+                ui.ansi.green
+            else
+                ui.ansi.yellow;
+            break :blk std.fmt.bufPrint(&summary_buf, "{s}{s}{s}", .{
+                summary_color,
+                raw_summary,
+                ui.ansi.reset,
+            }) catch raw_summary;
+        } else raw_summary;
+        var branch_buf: [128]u8 = undefined;
+        const branch_name = if (use_color and row.is_current) blk: {
+            break :blk std.fmt.bufPrint(&branch_buf, "{s}{s}{s}", .{
+                ui.ansi.bold,
+                row.branch_name,
+                ui.ansi.reset,
+            }) catch row.branch_name;
+        } else row.branch_name;
+
+        var display_buf: [768]u8 = undefined;
         var display_fbs = std.io.fixedBufferStream(&display_buf);
-        try picker_format.writeWorktreeRow(display_fbs.writer(), row.branch_name, summary, row.path);
+        try picker_format.writeWorktreeRow(display_fbs.writer(), branch_name, summary, row.path);
         try stderr.print("  [{d}] {s}\n", .{ idx + 1, display_fbs.getWritten() });
     }
 
@@ -116,8 +145,30 @@ fn selectViaBuiltin(
 fn selectViaFzf(
     allocator: std.mem.Allocator,
     rows: []const worktree_status.WorktreeRow,
+    use_color: bool,
 ) !?usize {
-    var child = std.process.Child.init(
+    const fzf_args: []const []const u8 = if (use_color)
+        &.{
+            "fzf",
+            "--prompt",
+            "Worktree > ",
+            "--height",
+            "40%",
+            "--reverse",
+            "--no-multi",
+            "--delimiter",
+            "\t",
+            "--with-nth",
+            "2",
+            "--accept-nth",
+            "1",
+            "--header-lines",
+            "1",
+            "--tabstop",
+            "4",
+            "--ansi",
+        }
+    else
         &.{
             "fzf",
             "--no-color",
@@ -137,9 +188,9 @@ fn selectViaFzf(
             "1",
             "--tabstop",
             "4",
-        },
-        allocator,
-    );
+        };
+
+    var child = std.process.Child.init(fzf_args, allocator);
     child.stdin_behavior = .Pipe;
     child.stdout_behavior = .Pipe;
     child.stderr_behavior = .Pipe;
@@ -158,12 +209,34 @@ fn selectViaFzf(
         try input.print("0\t{s}\n", .{header_fbs.getWritten()});
 
         for (rows, 0..) |row, idx| {
-            var summary_buf: [128]u8 = undefined;
-            const summary = worktree_status.pickerStatusSummary(row, &summary_buf);
+            var raw_summary_buf: [128]u8 = undefined;
+            const raw_summary = worktree_status.pickerStatusSummary(row, &raw_summary_buf);
+            var summary_buf: [192]u8 = undefined;
+            const summary = if (use_color) blk: {
+                const summary_color: []const u8 = if (!row.status_known)
+                    ui.ansi.yellow
+                else if (row.modified == 0 and row.untracked == 0 and row.ahead == 0 and row.behind == 0)
+                    ui.ansi.green
+                else
+                    ui.ansi.yellow;
+                break :blk std.fmt.bufPrint(&summary_buf, "{s}{s}{s}", .{
+                    summary_color,
+                    raw_summary,
+                    ui.ansi.reset,
+                }) catch raw_summary;
+            } else raw_summary;
+            var branch_buf: [128]u8 = undefined;
+            const branch_name = if (use_color and row.is_current) blk: {
+                break :blk std.fmt.bufPrint(&branch_buf, "{s}{s}{s}", .{
+                    ui.ansi.bold,
+                    row.branch_name,
+                    ui.ansi.reset,
+                }) catch row.branch_name;
+            } else row.branch_name;
 
-            var display_buf: [512]u8 = undefined;
+            var display_buf: [768]u8 = undefined;
             var display_fbs = std.io.fixedBufferStream(&display_buf);
-            try picker_format.writeWorktreeRow(display_fbs.writer(), row.branch_name, summary, row.path);
+            try picker_format.writeWorktreeRow(display_fbs.writer(), branch_name, summary, row.path);
             try input.print("{d}\t{s}\n", .{ idx + 1, display_fbs.getWritten() });
         }
     }
@@ -197,9 +270,10 @@ fn selectViaFzf(
 pub fn run(allocator: std.mem.Allocator, requested_picker: PickerMode) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
     const stderr = std.fs.File.stderr().deprecatedWriter();
+    const use_color = ui.shouldUseColor(std.fs.File.stderr());
 
     if (!isInteractiveSession()) {
-        try stderr.writeAll("Error: __pick-worktree requires an interactive terminal\n");
+        try ui.printLevel(stderr, use_color, .err, "__pick-worktree requires an interactive terminal", .{});
         std.process.exit(1);
     }
 
@@ -207,7 +281,7 @@ pub fn run(allocator: std.mem.Allocator, requested_picker: PickerMode) !void {
     defer allocator.free(cwd);
 
     const wt_output = git.runGit(allocator, null, &.{ "worktree", "list", "--porcelain" }) catch {
-        try stderr.writeAll("Error: not a git repository or git not found\n");
+        try ui.printLevel(stderr, use_color, .err, "not a git repository or git not found", .{});
         std.process.exit(1);
     };
     defer allocator.free(wt_output);
@@ -218,8 +292,11 @@ pub fn run(allocator: std.mem.Allocator, requested_picker: PickerMode) !void {
     if (worktrees.len == 0) return;
 
     if (worktrees.len == 1) {
-        try stderr.print(
-            "Only one worktree is available: {s} ({s}). Staying in the current directory.\n",
+        try ui.printLevel(
+            stderr,
+            use_color,
+            .info,
+            "only one worktree is available: {s} ({s}). Staying in the current directory.",
             .{ worktrees[0].branch orelse "(detached)", worktrees[0].path },
         );
         return;
@@ -231,8 +308,8 @@ pub fn run(allocator: std.mem.Allocator, requested_picker: PickerMode) !void {
     const resolved_mode = resolvePickerMode(allocator, requested_picker) catch |err| {
         switch (err) {
             error.FzfUnavailable => {
-                try stderr.writeAll("Error: picker 'fzf' was requested but fzf is not available on PATH\n");
-                try stderr.writeAll("Install fzf or use `--picker builtin`.\n");
+                try ui.printLevel(stderr, use_color, .err, "picker 'fzf' was requested but fzf is not available on PATH", .{});
+                try ui.printLevel(stderr, use_color, .info, "install fzf or use `--picker builtin`", .{});
                 std.process.exit(1);
             },
             else => return err,
@@ -240,14 +317,14 @@ pub fn run(allocator: std.mem.Allocator, requested_picker: PickerMode) !void {
     };
 
     const selected = switch (resolved_mode) {
-        .builtin => try selectViaBuiltin(stderr, std.fs.File.stdin(), rows),
-        .fzf => selectViaFzf(allocator, rows) catch |err| switch (err) {
+        .builtin => try selectViaBuiltin(stderr, std.fs.File.stdin(), rows, use_color),
+        .fzf => selectViaFzf(allocator, rows, use_color) catch |err| switch (err) {
             error.FzfFailed => {
-                try stderr.writeAll("Error: fzf failed while selecting a worktree\n");
+                try ui.printLevel(stderr, use_color, .err, "fzf failed while selecting a worktree", .{});
                 std.process.exit(1);
             },
             error.FzfInvalidSelection => {
-                try stderr.writeAll("Error: failed to parse fzf selection\n");
+                try ui.printLevel(stderr, use_color, .err, "failed to parse fzf selection", .{});
                 std.process.exit(1);
             },
             else => return err,

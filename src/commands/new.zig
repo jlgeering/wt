@@ -3,6 +3,7 @@ const git = @import("../lib/git.zig");
 const worktree = @import("../lib/worktree.zig");
 const config = @import("../lib/config.zig");
 const setup = @import("../lib/setup.zig");
+const ui = @import("../lib/ui.zig");
 
 fn shouldPrintPathToStdout(porcelain: bool) bool {
     return porcelain;
@@ -14,10 +15,12 @@ fn shouldPrintHumanStatus(porcelain: bool) bool {
 
 pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, porcelain: bool) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
+    const stderr = std.fs.File.stderr().deprecatedWriter();
+    const use_color = ui.shouldUseColor(std.fs.File.stderr());
 
     // Find main worktree (first in list)
     const wt_output = git.runGit(allocator, null, &.{ "worktree", "list", "--porcelain" }) catch {
-        std.debug.print("Error: not a git repository or git not found\n", .{});
+        try ui.printLevel(stderr, use_color, .err, "not a git repository or git not found", .{});
         std.process.exit(1);
     };
     defer allocator.free(wt_output);
@@ -26,7 +29,7 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, p
     defer allocator.free(worktrees);
 
     if (worktrees.len == 0) {
-        std.debug.print("Error: no worktrees found\n", .{});
+        try ui.printLevel(stderr, use_color, .err, "no worktrees found", .{});
         std.process.exit(1);
     }
 
@@ -37,7 +40,7 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, p
     // Check if worktree already exists
     if (std.fs.cwd().access(wt_path, .{})) |_| {
         if (shouldPrintHumanStatus(porcelain)) {
-            std.debug.print("Worktree already exists at {s}\n", .{wt_path});
+            try ui.printLevel(stderr, use_color, .warn, "worktree already exists at {s}", .{wt_path});
         }
         if (shouldPrintPathToStdout(porcelain)) {
             try stdout.print("{s}\n", .{wt_path});
@@ -56,30 +59,36 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, p
         for (worktrees) |wt| {
             if (wt.branch) |b| {
                 if (std.mem.eql(u8, b, branch)) {
-                    std.debug.print("Error: branch '{s}' already checked out in {s}\n", .{ branch, wt.path });
+                    try ui.printLevel(
+                        stderr,
+                        use_color,
+                        .err,
+                        "branch '{s}' is already checked out in {s}",
+                        .{ branch, wt.path },
+                    );
                     std.process.exit(1);
                 }
             }
         }
 
         if (shouldPrintHumanStatus(porcelain)) {
-            std.debug.print("Using existing branch '{s}'\n", .{branch});
+            try ui.printLevel(stderr, use_color, .info, "using existing branch '{s}'", .{branch});
         }
         const add_result = git.runGit(allocator, null, &.{ "worktree", "add", wt_path, branch }) catch {
-            std.debug.print("Error creating worktree\n", .{});
+            try ui.printLevel(stderr, use_color, .err, "failed to create worktree", .{});
             std.process.exit(1);
         };
         allocator.free(add_result);
     } else {
         const add_result = git.runGit(allocator, null, &.{ "worktree", "add", "-b", branch, wt_path, base }) catch {
-            std.debug.print("Error creating worktree\n", .{});
+            try ui.printLevel(stderr, use_color, .err, "failed to create worktree", .{});
             std.process.exit(1);
         };
         allocator.free(add_result);
     }
 
     if (shouldPrintHumanStatus(porcelain)) {
-        std.debug.print("Created worktree at {s}\n", .{wt_path});
+        try ui.printLevel(stderr, use_color, .success, "created worktree at {s}", .{wt_path});
     }
 
     // Load config and run setup

@@ -1,9 +1,6 @@
 const std = @import("std");
 const git = @import("../lib/git.zig");
-
-const ansi_reset = "\x1b[0m";
-const ansi_green = "\x1b[32m";
-const ansi_yellow = "\x1b[33m";
+const ui = @import("../lib/ui.zig");
 
 const Divergence = struct {
     known: bool,
@@ -25,7 +22,7 @@ const WorktreeRow = struct {
 };
 
 fn shouldUseColor() bool {
-    return std.fs.File.stdout().isTty() and !std.process.hasEnvVarConstant("NO_COLOR");
+    return ui.shouldUseColor(std.fs.File.stdout());
 }
 
 fn wtStateLabel(row: WorktreeRow) []const u8 {
@@ -75,14 +72,14 @@ fn writeHumanHeader(stdout: anytype) !void {
 }
 
 fn wtColor(row: WorktreeRow) []const u8 {
-    if (!row.wt_known) return ansi_yellow;
-    return if (row.tracked_changes == 0 and row.untracked == 0) ansi_green else ansi_yellow;
+    if (!row.wt_known) return ui.ansi.yellow;
+    return if (row.tracked_changes == 0 and row.untracked == 0) ui.ansi.green else ui.ansi.yellow;
 }
 
 fn divergenceColor(divergence: Divergence) []const u8 {
-    if (!divergence.known) return ansi_yellow;
-    if (!divergence.available) return ansi_reset;
-    return if (divergence.ahead == 0 and divergence.behind == 0) ansi_green else ansi_yellow;
+    if (!divergence.known) return ui.ansi.yellow;
+    if (!divergence.available) return ui.ansi.reset;
+    return if (divergence.ahead == 0 and divergence.behind == 0) ui.ansi.green else ui.ansi.yellow;
 }
 
 fn writeHumanRow(stdout: anytype, row: WorktreeRow, use_color: bool) !void {
@@ -110,9 +107,9 @@ fn writeHumanRow(stdout: anytype, row: WorktreeRow, use_color: bool) !void {
     const upstream_cell = std.fmt.bufPrint(&upstream_cell_buf, "{s:<9}", .{upstream}) catch upstream;
 
     try stdout.print("{s}   {s:<20} ", .{ marker, row.branch_name });
-    try stdout.print("{s}{s}{s} ", .{ wtColor(row), wt_cell, ansi_reset });
-    try stdout.print("{s}{s}{s} ", .{ divergenceColor(row.base_divergence), base_cell, ansi_reset });
-    try stdout.print("{s}{s}{s} ", .{ divergenceColor(row.upstream_divergence), upstream_cell, ansi_reset });
+    try stdout.print("{s}{s}{s} ", .{ wtColor(row), wt_cell, ui.ansi.reset });
+    try stdout.print("{s}{s}{s} ", .{ divergenceColor(row.base_divergence), base_cell, ui.ansi.reset });
+    try stdout.print("{s}{s}{s} ", .{ divergenceColor(row.upstream_divergence), upstream_cell, ui.ansi.reset });
     try stdout.print("{s}\n", .{row.path});
 }
 
@@ -238,13 +235,15 @@ fn inspectWorktree(
 
 pub fn run(allocator: std.mem.Allocator, porcelain: bool) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
+    const stderr = std.fs.File.stderr().deprecatedWriter();
+    const use_stderr_color = ui.shouldUseColor(std.fs.File.stderr());
     const use_color = shouldUseColor();
 
     const cwd = try std.process.getCwdAlloc(allocator);
     defer allocator.free(cwd);
 
     const wt_output = git.runGit(allocator, null, &.{ "worktree", "list", "--porcelain" }) catch {
-        std.debug.print("Error: not a git repository or git not found\n", .{});
+        try ui.printLevel(stderr, use_stderr_color, .err, "not a git repository or git not found", .{});
         std.process.exit(1);
     };
     defer allocator.free(wt_output);
@@ -253,7 +252,7 @@ pub fn run(allocator: std.mem.Allocator, porcelain: bool) !void {
     defer allocator.free(worktrees);
 
     if (worktrees.len == 0) {
-        std.debug.print("No worktrees found\n", .{});
+        try ui.printLevel(stderr, use_stderr_color, .info, "no worktrees found", .{});
         return;
     }
 

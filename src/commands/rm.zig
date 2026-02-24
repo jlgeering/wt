@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const git = @import("../lib/git.zig");
 const picker_format = @import("../lib/picker_format.zig");
+const ui = @import("../lib/ui.zig");
 
 pub const PickerMode = enum {
     auto,
@@ -29,11 +30,6 @@ const BranchDeleteAction = enum {
     delete,
     skip_detached,
 };
-
-const ansi_reset = "\x1b[0m";
-const ansi_bold = "\x1b[1m";
-const ansi_green = "\x1b[32m";
-const ansi_yellow = "\x1b[33m";
 
 const esc_key: u8 = 0x1b;
 const ctrl_c_key: u8 = 0x03;
@@ -135,7 +131,7 @@ fn unsafeRemovalDecisionFromLineInput(input: []const u8) ?bool {
 }
 
 fn shouldUseColor() bool {
-    return std.fs.File.stdout().isTty() and !std.process.hasEnvVarConstant("NO_COLOR");
+    return ui.shouldUseColor(std.fs.File.stdout());
 }
 
 fn branchDeleteAction(candidate: RemovalCandidate) BranchDeleteAction {
@@ -207,10 +203,10 @@ fn printCandidateRow(
         return;
     }
 
-    const summary_color: []const u8 = if (candidate.safe) ansi_green else ansi_yellow;
+    const summary_color: []const u8 = if (candidate.safe) ui.ansi.green else ui.ansi.yellow;
     try stdout.print(
         "  [{d}] {s}{s}{s}  {s}  ({s}{s}{s})\n",
-        .{ idx + 1, ansi_bold, branch_name, ansi_reset, candidate.path, summary_color, summary, ansi_reset },
+        .{ idx + 1, ui.ansi.bold, branch_name, ui.ansi.reset, candidate.path, summary_color, summary, ui.ansi.reset },
     );
 }
 
@@ -411,8 +407,8 @@ fn selectViaFzf(
             const branch_name = candidate.branch orelse "(detached)";
             var status_buf: [192]u8 = undefined;
             const status = if (use_color) blk: {
-                const summary_color: []const u8 = if (candidate.safe) ansi_green else ansi_yellow;
-                break :blk try std.fmt.bufPrint(&status_buf, "{s}{s}{s}", .{ summary_color, summary, ansi_reset });
+                const summary_color: []const u8 = if (candidate.safe) ui.ansi.green else ui.ansi.yellow;
+                break :blk try std.fmt.bufPrint(&status_buf, "{s}{s}{s}", .{ summary_color, summary, ui.ansi.reset });
             } else summary;
 
             var display_buf: [768]u8 = undefined;
@@ -462,9 +458,9 @@ fn printBlockedCurrentWorktreeMessage(
     if (use_color) {
         try stderr.print(
             "\n{s}{s}Warning:{s} cannot remove the current worktree\n",
-            .{ ansi_bold, ansi_yellow, ansi_reset },
+            .{ ui.ansi.bold, ui.ansi.yellow, ui.ansi.reset },
         );
-        try stderr.print("  branch: {s}{s}{s}\n", .{ ansi_bold, current_branch, ansi_reset });
+        try stderr.print("  branch: {s}{s}{s}\n", .{ ui.ansi.bold, current_branch, ui.ansi.reset });
         try stderr.print("  path:   {s}\n", .{current_path});
     } else {
         try stderr.writeAll("\nWarning: cannot remove the current worktree\n");
@@ -485,7 +481,7 @@ fn printSkipCurrentWorktreeMessage(
     if (use_color) {
         try stderr.print(
             "\n{s}{s}Warning:{s} excluding current worktree from removal candidates\n",
-            .{ ansi_bold, ansi_yellow, ansi_reset },
+            .{ ui.ansi.bold, ui.ansi.yellow, ui.ansi.reset },
         );
     } else {
         try stderr.writeAll("\nWarning: excluding current worktree from removal candidates\n");
@@ -617,16 +613,18 @@ fn removeCandidate(
     force: bool,
 ) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
+    const stderr = std.fs.File.stderr().deprecatedWriter();
+    const use_color = ui.shouldUseColor(std.fs.File.stderr());
 
     std.fs.cwd().access(candidate.path, .{}) catch {
-        std.debug.print("Error: worktree at {s} does not exist\n", .{candidate.path});
+        try ui.printLevel(stderr, use_color, .err, "worktree at {s} does not exist", .{candidate.path});
         std.process.exit(1);
     };
 
     if (!force and !candidate.safe) {
         if (!std.fs.File.stdin().isTty()) {
-            std.debug.print("Error: worktree removal is unsafe and requires confirmation\n", .{});
-            std.debug.print("Use --force to remove anyway\n", .{});
+            try ui.printLevel(stderr, use_color, .err, "worktree removal is unsafe and requires confirmation", .{});
+            try ui.printLevel(stderr, use_color, .info, "use --force to remove anyway", .{});
             std.process.exit(1);
         }
 
@@ -639,44 +637,44 @@ fn removeCandidate(
             candidate.untracked,
             candidate.has_local_commits,
         ) catch {
-            std.debug.print("Error: failed to read confirmation\n", .{});
+            try ui.printLevel(stderr, use_color, .err, "failed to read confirmation", .{});
             std.process.exit(1);
         };
 
         if (!confirmed) {
-            std.debug.print("Aborted\n", .{});
+            try ui.printLevel(stderr, use_color, .warn, "aborted", .{});
             std.process.exit(1);
         }
     }
 
     if (force) {
         const rm_result = git.runGit(allocator, null, &.{ "worktree", "remove", "--force", candidate.path }) catch {
-            std.debug.print("Error: could not remove worktree\n", .{});
+            try ui.printLevel(stderr, use_color, .err, "could not remove worktree", .{});
             std.process.exit(1);
         };
         allocator.free(rm_result);
     } else {
         const rm_result = git.runGit(allocator, null, &.{ "worktree", "remove", candidate.path }) catch {
-            std.debug.print("Error: could not remove worktree\n", .{});
+            try ui.printLevel(stderr, use_color, .err, "could not remove worktree", .{});
             std.process.exit(1);
         };
         allocator.free(rm_result);
     }
 
-    std.debug.print("Removed worktree {s}\n", .{candidate.path});
+    try ui.printLevel(stderr, use_color, .success, "removed worktree {s}", .{candidate.path});
 
     switch (branchDeleteAction(candidate)) {
         .delete => {
             const branch = candidate.branch.?;
             const del_result = git.runGit(allocator, main_path, &.{ "branch", "-d", branch }) catch {
-                std.debug.print("Branch '{s}' kept (has local commits)\n", .{branch});
+                try ui.printLevel(stderr, use_color, .warn, "branch '{s}' kept (has local commits)", .{branch});
                 return;
             };
             allocator.free(del_result);
-            std.debug.print("Deleted merged branch '{s}'\n", .{branch});
+            try ui.printLevel(stderr, use_color, .success, "deleted merged branch '{s}'", .{branch});
         },
         .skip_detached => {
-            std.debug.print("Detached worktree removed; no branch deleted\n", .{});
+            try ui.printLevel(stderr, use_color, .info, "detached worktree removed; no branch deleted", .{});
         },
     }
 }
@@ -685,9 +683,10 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
     const stderr = std.fs.File.stderr().deprecatedWriter();
     const use_color = shouldUseColor();
+    const use_stderr_color = ui.shouldUseColor(std.fs.File.stderr());
 
     const wt_output = git.runGit(allocator, null, &.{ "worktree", "list", "--porcelain" }) catch {
-        std.debug.print("Error: not a git repository or git not found\n", .{});
+        try ui.printLevel(stderr, use_stderr_color, .err, "not a git repository or git not found", .{});
         std.process.exit(1);
     };
     defer allocator.free(wt_output);
@@ -696,12 +695,12 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     defer allocator.free(worktrees);
 
     if (worktrees.len < 2) {
-        std.debug.print("No secondary worktrees to remove\n", .{});
+        try ui.printLevel(stderr, use_stderr_color, .info, "no secondary worktrees to remove", .{});
         return;
     }
 
     const current_worktree_path = detectCurrentWorktreePath(allocator) catch {
-        std.debug.print("Error: could not determine current worktree path\n", .{});
+        try ui.printLevel(stderr, use_stderr_color, .err, "could not determine current worktree path", .{});
         std.process.exit(1);
     };
     defer allocator.free(current_worktree_path);
@@ -710,7 +709,7 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
 
     if (options.branch_arg) |branch| {
         const wt_info = findWorktreeByBranch(worktrees, branch) orelse {
-            std.debug.print("Error: no worktree found for branch '{s}'\n", .{branch});
+            try ui.printLevel(stderr, use_stderr_color, .err, "no worktree found for branch '{s}'", .{branch});
             std.process.exit(1);
         };
 
@@ -727,7 +726,7 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
         }
 
         const candidate = inspectCandidate(allocator, main_path, wt_info) catch {
-            std.debug.print("Error: could not inspect worktree for branch '{s}'\n", .{branch});
+            try ui.printLevel(stderr, use_stderr_color, .err, "could not inspect worktree for branch '{s}'", .{branch});
             std.process.exit(1);
         };
 
@@ -736,7 +735,7 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     }
 
     const split = splitSecondaryWorktrees(allocator, worktrees[1..], current_worktree_path) catch {
-        std.debug.print("Error: could not build worktree removal candidates\n", .{});
+        try ui.printLevel(stderr, use_stderr_color, .err, "could not build worktree removal candidates", .{});
         std.process.exit(1);
     };
     defer allocator.free(split.removable);
@@ -754,7 +753,7 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
             return;
         }
 
-        std.debug.print("No secondary worktrees to remove\n", .{});
+        try ui.printLevel(stderr, use_stderr_color, .info, "no secondary worktrees to remove", .{});
         return;
     }
 
@@ -769,13 +768,13 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     }
 
     if (options.no_interactive or !isInteractiveSession()) {
-        try stderr.writeAll("Error: wt rm without a branch requires an interactive terminal\n");
-        try stderr.writeAll("Use `wt list` to inspect worktrees, or pass a branch to `wt rm <branch>`.\n");
+        try ui.printLevel(stderr, use_stderr_color, .err, "wt rm without a branch requires an interactive terminal", .{});
+        try ui.printLevel(stderr, use_stderr_color, .info, "use `wt list` to inspect worktrees, or pass a branch to `wt rm <branch>`", .{});
         std.process.exit(1);
     }
 
     const candidates = buildCandidates(allocator, main_path, split.removable) catch {
-        std.debug.print("Error: could not build worktree removal candidates\n", .{});
+        try ui.printLevel(stderr, use_stderr_color, .err, "could not build worktree removal candidates", .{});
         std.process.exit(1);
     };
     defer allocator.free(candidates);
@@ -783,8 +782,8 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     const resolved_mode = resolvePickerMode(allocator, options.picker_mode, commandExists) catch |err| {
         switch (err) {
             error.FzfUnavailable => {
-                try stderr.writeAll("Error: picker 'fzf' was requested but fzf is not available on PATH\n");
-                try stderr.writeAll("Install fzf or use `--picker builtin`.\n");
+                try ui.printLevel(stderr, use_stderr_color, .err, "picker 'fzf' was requested but fzf is not available on PATH", .{});
+                try ui.printLevel(stderr, use_stderr_color, .info, "install fzf or use `--picker builtin`", .{});
                 std.process.exit(1);
             },
             else => return err,
@@ -796,11 +795,11 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
         .fzf => selectViaFzf(allocator, candidates, use_color) catch |err| {
             switch (err) {
                 error.FzfFailed => {
-                    try stderr.writeAll("Error: fzf failed while selecting a worktree\n");
+                    try ui.printLevel(stderr, use_stderr_color, .err, "fzf failed while selecting a worktree", .{});
                     std.process.exit(1);
                 },
                 error.FzfInvalidSelection => {
-                    try stderr.writeAll("Error: failed to parse fzf selection\n");
+                    try ui.printLevel(stderr, use_stderr_color, .err, "failed to parse fzf selection", .{});
                     std.process.exit(1);
                 },
                 else => return err,
@@ -810,7 +809,7 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     };
 
     if (selected_index == null) {
-        try stderr.writeAll("Aborted (no worktree removed)\n");
+        try ui.printLevel(stderr, use_stderr_color, .warn, "aborted (no worktree removed)", .{});
         return;
     }
 

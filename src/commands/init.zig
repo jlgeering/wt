@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const git = @import("../lib/git.zig");
 const config = @import("../lib/config.zig");
 const init_planner = @import("../lib/init_planner.zig");
+const ui = @import("../lib/ui.zig");
 
 const ApplyDecision = enum {
     apply_all,
@@ -15,11 +16,11 @@ const DeclineDecision = enum {
     quit,
 };
 
-const ansi_reset = "\x1b[0m";
-const ansi_bold = "\x1b[1m";
-const ansi_green = "\x1b[32m";
-const ansi_yellow = "\x1b[33m";
-const ansi_red = "\x1b[31m";
+const ansi_reset = ui.ansi.reset;
+const ansi_bold = ui.ansi.bold;
+const ansi_green = ui.ansi.green;
+const ansi_yellow = ui.ansi.yellow;
+const ansi_red = ui.ansi.red;
 const esc_key: u8 = 0x1b;
 const ctrl_c_key: u8 = 0x03;
 
@@ -207,7 +208,7 @@ fn promptDeclineDecision(stdout: anytype, stdin_file: std.fs.File) !DeclineDecis
 }
 
 fn shouldUseColor() bool {
-    return std.fs.File.stdout().isTty() and !std.process.hasEnvVarConstant("NO_COLOR");
+    return ui.shouldUseColor(std.fs.File.stdout());
 }
 
 fn printHeading(stdout: anytype, use_color: bool, heading: []const u8) !void {
@@ -300,15 +301,17 @@ fn writeFile(path: []const u8, content: []const u8) !void {
 pub fn run(allocator: std.mem.Allocator) !void {
     const stdin_file = std.fs.File.stdin();
     const stdout = std.fs.File.stdout().deprecatedWriter();
+    const stderr = std.fs.File.stderr().deprecatedWriter();
+    const use_stderr_color = ui.shouldUseColor(std.fs.File.stderr());
     const use_color = shouldUseColor();
 
     if (!stdin_file.isTty()) {
-        std.debug.print("Error: wt init requires an interactive terminal\n", .{});
+        try ui.printLevel(stderr, use_stderr_color, .err, "wt init requires an interactive terminal", .{});
         std.process.exit(1);
     }
 
     const repo_root = getRepoRoot(allocator) catch {
-        std.debug.print("Error: not a git repository or git not found\n", .{});
+        try ui.printLevel(stderr, use_stderr_color, .err, "not a git repository or git not found", .{});
         std.process.exit(1);
     };
     defer allocator.free(repo_root);

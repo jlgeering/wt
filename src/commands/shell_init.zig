@@ -1,4 +1,5 @@
 const std = @import("std");
+const ui = @import("../lib/ui.zig");
 
 const zsh_init =
     \\# wt shell integration
@@ -210,13 +211,15 @@ const bash_init =
 
 pub fn run(shell: []const u8) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
+    const stderr = std.fs.File.stderr().deprecatedWriter();
+    const use_color = ui.shouldUseColor(std.fs.File.stderr());
 
     if (std.mem.eql(u8, shell, "zsh")) {
         try stdout.print("{s}\n", .{zsh_init});
     } else if (std.mem.eql(u8, shell, "bash")) {
         try stdout.print("{s}\n", .{bash_init});
     } else {
-        std.debug.print("Unsupported shell: {s}. Supported: zsh, bash\n", .{shell});
+        try ui.printLevel(stderr, use_color, .err, "unsupported shell: {s}. Supported: zsh, bash", .{shell});
         std.process.exit(1);
     }
 }

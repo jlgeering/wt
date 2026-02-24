@@ -1,11 +1,19 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const config_mod = @import("config.zig");
+const ui = @import("ui.zig");
 
 pub const LogMode = enum {
     human,
     quiet,
 };
+
+fn logMessage(level: ui.Level, comptime fmt: []const u8, args: anytype) void {
+    const stderr_file = std.fs.File.stderr();
+    const stderr = stderr_file.deprecatedWriter();
+    const use_color = ui.shouldUseColor(stderr_file);
+    ui.printLevel(stderr, use_color, level, fmt, args) catch {};
+}
 
 /// Copy a path from source to target using copy-on-write where available.
 /// Shells out to `cp` for CoW support. Skips if source missing or target exists.
@@ -24,7 +32,7 @@ pub fn cowCopy(
     // Check source exists
     std.fs.cwd().access(source, .{}) catch {
         if (mode == .human) {
-            std.debug.print("  skip copy {s}: source doesn't exist\n", .{rel_path});
+            logMessage(.info, "skip copy {s}: source doesn't exist", .{rel_path});
         }
         return;
     };
@@ -32,7 +40,7 @@ pub fn cowCopy(
     // Check target doesn't already exist
     if (std.fs.cwd().access(target, .{})) |_| {
         if (mode == .human) {
-            std.debug.print("  skip copy {s}: already exists\n", .{rel_path});
+            logMessage(.info, "skip copy {s}: already exists", .{rel_path});
         }
         return;
     } else |_| {}
@@ -53,7 +61,7 @@ pub fn cowCopy(
         .allocator = allocator,
         .argv = cp_args,
     }) catch {
-        std.debug.print("  WARN: copy failed for {s}\n", .{rel_path});
+        logMessage(.warn, "copy failed for {s}", .{rel_path});
         return;
     };
     allocator.free(result.stdout);
@@ -62,18 +70,18 @@ pub fn cowCopy(
     switch (result.term) {
         .Exited => |code| {
             if (code != 0) {
-                std.debug.print("  WARN: copy failed for {s}\n", .{rel_path});
+                logMessage(.warn, "copy failed for {s}", .{rel_path});
                 return;
             }
         },
         else => {
-            std.debug.print("  WARN: copy failed for {s}\n", .{rel_path});
+            logMessage(.warn, "copy failed for {s}", .{rel_path});
             return;
         },
     }
 
     if (mode == .human) {
-        std.debug.print("  copied (CoW) {s}\n", .{rel_path});
+        logMessage(.success, "copied (CoW) {s}", .{rel_path});
     }
 }
 
@@ -94,7 +102,7 @@ pub fn createSymlink(
     // Check source exists
     std.fs.cwd().access(source, .{}) catch {
         if (mode == .human) {
-            std.debug.print("  skip symlink {s}: source doesn't exist\n", .{rel_path});
+            logMessage(.info, "skip symlink {s}: source doesn't exist", .{rel_path});
         }
         return;
     };
@@ -102,7 +110,7 @@ pub fn createSymlink(
     // Check target doesn't already exist
     if (std.fs.cwd().access(target, .{})) |_| {
         if (mode == .human) {
-            std.debug.print("  skip symlink {s}: already exists\n", .{rel_path});
+            logMessage(.info, "skip symlink {s}: already exists", .{rel_path});
         }
         return;
     } else |_| {}
@@ -113,12 +121,12 @@ pub fn createSymlink(
     }
 
     std.fs.symLinkAbsolute(source, target, .{}) catch {
-        std.debug.print("  WARN: symlink failed for {s}\n", .{rel_path});
+        logMessage(.warn, "symlink failed for {s}", .{rel_path});
         return;
     };
 
     if (mode == .human) {
-        std.debug.print("  symlinked {s}\n", .{rel_path});
+        logMessage(.success, "symlinked {s}", .{rel_path});
     }
 }
 
@@ -132,7 +140,7 @@ pub fn runSetupCommands(
 ) !void {
     for (commands) |cmd| {
         if (mode == .human) {
-            std.debug.print("  running: {s}\n", .{cmd});
+            logMessage(.info, "running: {s}", .{cmd});
         }
 
         const result = std.process.Child.run(.{
@@ -140,7 +148,7 @@ pub fn runSetupCommands(
             .argv = &.{ "sh", "-c", cmd },
             .cwd = cwd,
         }) catch {
-            std.debug.print("  WARN: failed to run '{s}'\n", .{cmd});
+            logMessage(.warn, "failed to run '{s}'", .{cmd});
             continue;
         };
         allocator.free(result.stdout);
@@ -149,11 +157,11 @@ pub fn runSetupCommands(
         switch (result.term) {
             .Exited => |code| {
                 if (code != 0) {
-                    std.debug.print("  WARN: '{s}' exited with code {d}\n", .{ cmd, code });
+                    logMessage(.warn, "'{s}' exited with code {d}", .{ cmd, code });
                 }
             },
             else => {
-                std.debug.print("  WARN: '{s}' terminated abnormally\n", .{cmd});
+                logMessage(.warn, "'{s}' terminated abnormally", .{cmd});
             },
         }
     }
