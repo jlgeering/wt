@@ -40,7 +40,10 @@ source ~/.bashrc
 - When only one worktree exists, no picker is shown; the wrapper prints a notice and returns without changing directories.
 - The wrapper intercepts `wt new ...` and `wt add ...`.
 - It calls `wt <new|add> --porcelain ...` and captures stdout (the created worktree path).
-- If `wt new`/`wt add` exits successfully and the output is an existing directory, it runs `cd "$output"`.
+- Before creation, it captures the current repo-relative subdirectory via `git rev-parse --show-prefix`.
+- If `wt new`/`wt add` exits successfully and the output is an existing directory:
+  - it prefers `cd "$output/<relative-subdir>"` when that path exists.
+  - if the subdirectory is missing in the new worktree, it prints a note and falls back to `cd "$output"`.
 - After changing directories, it prints `Entered worktree: <path>`.
 - All other subcommands are passed through unchanged via `command wt "$@"`.
 
@@ -52,10 +55,12 @@ source ~/.bashrc
 ## Quick verification
 
 ```bash
+mkdir -p demo/subdir
+cd demo/subdir
 wt new demo-branch
 pwd
 wt
 pwd
 ```
 
-After `wt new demo-branch`, `pwd` should show the new worktree directory.
+After `wt new demo-branch`, `pwd` should show the same relative subdirectory in the new worktree when present; otherwise it should show the new worktree root.
