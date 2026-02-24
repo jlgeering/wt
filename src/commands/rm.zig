@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const git = @import("../lib/git.zig");
+const picker_format = @import("../lib/picker_format.zig");
 
 pub const PickerMode = enum {
     auto,
@@ -327,7 +328,7 @@ fn selectViaFzf(
     candidates: []const RemovalCandidate,
     use_color: bool,
 ) !?usize {
-    var child = std.process.Child.init(
+    const fzf_args: []const []const u8 = if (use_color)
         &.{
             "fzf",
             "--prompt",
@@ -340,14 +341,35 @@ fn selectViaFzf(
             "\t",
             "--with-nth",
             "2",
-            "--header",
-            "BRANCH                STATUS                       PATH",
+            "--accept-nth",
+            "1",
+            "--header-lines",
+            "1",
             "--tabstop",
             "4",
             "--ansi",
-        },
-        allocator,
-    );
+        }
+    else
+        &.{
+            "fzf",
+            "--prompt",
+            "Remove worktree > ",
+            "--height",
+            "40%",
+            "--reverse",
+            "--no-multi",
+            "--delimiter",
+            "\t",
+            "--with-nth",
+            "2",
+            "--accept-nth",
+            "1",
+            "--header-lines",
+            "1",
+            "--tabstop",
+            "4",
+        };
+    var child = std.process.Child.init(fzf_args, allocator);
     child.stdin_behavior = .Pipe;
     child.stdout_behavior = .Pipe;
     child.stderr_behavior = .Pipe;
@@ -359,19 +381,26 @@ fn selectViaFzf(
 
     {
         var input = child.stdin.?.writer();
+
+        var header_buf: [256]u8 = undefined;
+        var header_fbs = std.io.fixedBufferStream(&header_buf);
+        try picker_format.writeRmHeader(header_fbs.writer());
+        try input.print("0\t{s}\n", .{header_fbs.getWritten()});
+
         for (candidates, 0..) |candidate, idx| {
             var summary_buf: [128]u8 = undefined;
             const summary = formatCandidateSummary(&summary_buf, candidate);
             const branch_name = candidate.branch orelse "(detached)";
-            if (use_color) {
+            var status_buf: [192]u8 = undefined;
+            const status = if (use_color) blk: {
                 const summary_color: []const u8 = if (candidate.safe) ansi_green else ansi_yellow;
-                try input.print(
-                    "{d}\t{s:<20}   {s}{s:<26}{s}   {s}\n",
-                    .{ idx + 1, branch_name, summary_color, summary, ansi_reset, candidate.path },
-                );
-            } else {
-                try input.print("{d}\t{s:<20}   {s:<26}   {s}\n", .{ idx + 1, branch_name, summary, candidate.path });
-            }
+                break :blk try std.fmt.bufPrint(&status_buf, "{s}{s}{s}", .{ summary_color, summary, ansi_reset });
+            } else summary;
+
+            var display_buf: [768]u8 = undefined;
+            var display_fbs = std.io.fixedBufferStream(&display_buf);
+            try picker_format.writeRmRow(display_fbs.writer(), branch_name, status, candidate.path);
+            try input.print("{d}\t{s}\n", .{ idx + 1, display_fbs.getWritten() });
         }
     }
     child.stdin.?.close();
@@ -396,12 +425,10 @@ fn selectViaFzf(
         else => return error.FzfFailed,
     }
 
-    const selected_line = std.mem.trim(u8, stdout_buf.items, " \t\r\n");
-    if (selected_line.len == 0) return null;
+    const selected_raw = std.mem.trim(u8, stdout_buf.items, " \t\r\n");
+    if (selected_raw.len == 0) return null;
 
-    const tab_idx = std.mem.indexOfScalar(u8, selected_line, '\t') orelse return error.FzfInvalidSelection;
-    const index_raw = selected_line[0..tab_idx];
-    const selected = std.fmt.parseInt(usize, index_raw, 10) catch return error.FzfInvalidSelection;
+    const selected = std.fmt.parseInt(usize, selected_raw, 10) catch return error.FzfInvalidSelection;
     if (selected < 1 or selected > candidates.len) return error.FzfInvalidSelection;
 
     return selected - 1;

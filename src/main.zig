@@ -5,6 +5,7 @@ const build_options = @import("build_options");
 const list_cmd = @import("commands/list.zig");
 const new_cmd = @import("commands/new.zig");
 const rm_cmd = @import("commands/rm.zig");
+const pick_worktree_cmd = @import("commands/pick_worktree.zig");
 const shell_init_cmd = @import("commands/shell_init.zig");
 const init_cmd = @import("commands/init.zig");
 
@@ -62,6 +63,35 @@ fn maybeRunHiddenShellInit(
     return true;
 }
 
+fn maybeRunHiddenPickWorktree(
+    allocator: std.mem.Allocator,
+    argv: []const [:0]const u8,
+) !bool {
+    if (argv.len <= 1 or !std.mem.eql(u8, argv[1], "__pick-worktree")) {
+        return false;
+    }
+
+    var pick_app = App.init(allocator, "wt __pick-worktree", "Internal: interactive worktree picker");
+    defer pick_app.deinit();
+
+    var pick_cmd = pick_app.rootCommand();
+    try pick_cmd.addArg(Arg.singleValueOption(
+        "picker",
+        null,
+        "Picker backend for interactive mode (auto|builtin|fzf)",
+    ));
+
+    const pick_matches = try pick_app.parseFrom(argv[2..]);
+    const picker_raw = pick_matches.getSingleValue("picker") orelse "auto";
+    const picker_mode = pick_worktree_cmd.parsePickerMode(picker_raw) catch {
+        std.debug.print("Error: invalid picker '{s}'. Expected auto, builtin, or fzf\n", .{picker_raw});
+        std.process.exit(1);
+    };
+
+    try pick_worktree_cmd.run(allocator, picker_mode);
+    return true;
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -108,6 +138,9 @@ pub fn main() !void {
     defer allocator.free(parse_argv);
 
     if (try maybeRunHiddenShellInit(allocator, parse_argv)) {
+        return;
+    }
+    if (try maybeRunHiddenPickWorktree(allocator, parse_argv)) {
         return;
     }
 
