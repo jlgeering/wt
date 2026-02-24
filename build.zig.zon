@@ -4,9 +4,10 @@
     .fingerprint = 0x76cf48eb058cbd18,
     .minimum_zig_version = "0.14.0",
     .dependencies = .{
+        // Pin to issue #33 overflow fix commit instead of 0.7.0, which targets newer Zig APIs.
         .yazap = .{
-            .url = "git+https://github.com/prajwalch/yazap?ref=v0.6.3#71490491b8f1b0741218160b88cf0a87d2a941ce",
-            .hash = "yazap-0.6.3-Z1t-EiLlAQCR5mUSOlF1PovnwyPcIUGeV02lAIVMUEOc",
+            .url = "git+https://github.com/prajwalch/yazap?ref=fdb6a88e30bd7d27d548dd9f9809df8429f9f87b#fdb6a88e30bd7d27d548dd9f9809df8429f9f87b",
+            .hash = "yazap-0.6.3-Z1t-EhflAQCN128_OyQRyDcnbbVFPngvhwonpAHTq36h",
         },
         .toml = .{
             .url = "git+https://github.com/sam701/zig-toml?ref=last-zig-0.14.1#d65ed6023e51cafe80ba20af56a3b5d551efd067",
