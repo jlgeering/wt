@@ -38,6 +38,30 @@ fn normalizeArgvForAliases(
     return normalized;
 }
 
+fn maybeRunHiddenShellInit(
+    allocator: std.mem.Allocator,
+    argv: []const [:0]const u8,
+) !bool {
+    if (argv.len <= 1 or !std.mem.eql(u8, argv[1], "shell-init")) {
+        return false;
+    }
+
+    var shell_app = App.init(allocator, "wt shell-init", "Output shell integration function");
+    defer shell_app.deinit();
+
+    var shell_cmd = shell_app.rootCommand();
+    try shell_cmd.addArg(Arg.positional("SHELL", "Shell name: zsh, bash", null));
+
+    const shell_matches = try shell_app.parseFrom(argv[2..]);
+    const shell = shell_matches.getSingleValue("SHELL") orelse {
+        std.debug.print("Error: shell name required (zsh, bash)\n", .{});
+        std.process.exit(1);
+    };
+
+    try shell_init_cmd.run(shell);
+    return true;
+}
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -77,15 +101,15 @@ pub fn main() !void {
     try cmd_rm.addArg(Arg.booleanOption("no-interactive", null, "Disable interactive picker when BRANCH is omitted"));
     try wt.addSubcommand(cmd_rm);
 
-    var cmd_shell_init = app.createCommand("shell-init", "Output shell integration function");
-    try cmd_shell_init.addArg(Arg.positional("SHELL", "Shell name: zsh, bash", null));
-    try wt.addSubcommand(cmd_shell_init);
-
     try wt.addSubcommand(app.createCommand("init", "Create or upgrade .wt.toml with guided recommendations"));
 
     app.process_args = try std.process.argsAlloc(allocator);
     const parse_argv = try normalizeArgvForAliases(allocator, app.process_args.?);
     defer allocator.free(parse_argv);
+
+    if (try maybeRunHiddenShellInit(allocator, parse_argv)) {
+        return;
+    }
 
     const matches = try app.parseFrom(parse_argv[1..]);
     if (matches.containsArg("version")) {
@@ -117,12 +141,6 @@ pub fn main() !void {
             .picker_mode = picker_mode,
             .no_interactive = rm_matches.containsArg("no-interactive"),
         });
-    } else if (matches.subcommandMatches("shell-init")) |si_matches| {
-        const shell = si_matches.getSingleValue("SHELL") orelse {
-            std.debug.print("Error: shell name required (zsh, bash)\n", .{});
-            std.process.exit(1);
-        };
-        try shell_init_cmd.run(shell);
     } else if (matches.subcommandMatches("init")) |_| {
         try init_cmd.run(allocator);
     }
