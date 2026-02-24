@@ -39,6 +39,9 @@ source ~/.bashrc
 - After selection:
   - it prefers `cd "<selected-worktree>/<relative-subdir>"` when that path exists.
   - if the subdirectory is missing in the selected worktree, it prints a note and falls back to `cd "<selected-worktree>"`.
+  - after changing directories, it prints a short summary block with a blank leading line:
+    - `Entered worktree: <worktree-root>`
+    - optional `Subdirectory: <relative-subdir>`
 - Picker rows include branch, status, and path.
 - Picker backend for no-arg `wt` mirrors `wt rm --picker auto`: use `fzf` when available, otherwise use a built-in numbered prompt.
 - When only one worktree exists, no picker is shown; the wrapper prints a notice and returns without changing directories.
@@ -48,7 +51,7 @@ source ~/.bashrc
 - If `wt new`/`wt add` exits successfully and the output is an existing directory:
   - it prefers `cd "$output/<relative-subdir>"` when that path exists.
   - if the subdirectory is missing in the new worktree, it prints a note and falls back to `cd "$output"`.
-- After changing directories, it prints `Entered worktree: <path>`.
+- After changing directories, it prints the same summary block (`Entered worktree` and optional `Subdirectory`).
 - All other subcommands are passed through unchanged via `command wt "$@"`.
 
 ## Notes

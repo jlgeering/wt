@@ -10,6 +10,31 @@ const zsh_init =
     \\        return $?
     \\    fi
     \\
+    \\    __wt_report_location() {
+    \\        local worktree_root="$1"
+    \\        local target_dir="$2"
+    \\        local entered_subdir=""
+    \\        if [ "$target_dir" != "$worktree_root" ]; then
+    \\            entered_subdir="${target_dir#$worktree_root/}"
+    \\        fi
+    \\
+    \\        if [ -t 1 ]; then
+    \\            local c_reset=$'\033[0m'
+    \\            local c_label=$'\033[2m'
+    \\            local c_worktree=$'\033[36m'
+    \\            local c_subdir=$'\033[33m'
+    \\            printf "\n${c_label}Entered worktree:${c_reset} ${c_worktree}%s${c_reset}\n" "$worktree_root"
+    \\            if [ -n "$entered_subdir" ]; then
+    \\                printf "${c_label}Subdirectory:${c_reset} ${c_subdir}%s${c_reset}\n" "$entered_subdir"
+    \\            fi
+    \\        else
+    \\            printf "\nEntered worktree: %s\n" "$worktree_root"
+    \\            if [ -n "$entered_subdir" ]; then
+    \\                printf "Subdirectory: %s\n" "$entered_subdir"
+    \\            fi
+    \\        fi
+    \\    }
+    \\
     \\    if [ "$#" -eq 0 ]; then
     \\        local relative_subdir
     \\        relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
@@ -37,7 +62,7 @@ const zsh_init =
     \\            fi
     \\        fi
     \\        cd "$target_dir" || return 1
-    \\        echo "Entered worktree: $target_dir"
+    \\        __wt_report_location "$selected_path" "$target_dir"
     \\        return 0
     \\    fi
     \\
@@ -60,7 +85,7 @@ const zsh_init =
     \\                    fi
     \\                fi
     \\                cd "$target_dir" || return 1
-    \\                echo "Entered worktree: $target_dir"
+    \\                __wt_report_location "$output" "$target_dir"
     \\            fi
     \\            return $exit_code
     \\            ;;
@@ -81,6 +106,31 @@ const bash_init =
     \\        return $?
     \\    fi
     \\
+    \\    __wt_report_location() {
+    \\        local worktree_root="$1"
+    \\        local target_dir="$2"
+    \\        local entered_subdir=""
+    \\        if [ "$target_dir" != "$worktree_root" ]; then
+    \\            entered_subdir="${target_dir#$worktree_root/}"
+    \\        fi
+    \\
+    \\        if [ -t 1 ]; then
+    \\            local c_reset=$'\033[0m'
+    \\            local c_label=$'\033[2m'
+    \\            local c_worktree=$'\033[36m'
+    \\            local c_subdir=$'\033[33m'
+    \\            printf "\n${c_label}Entered worktree:${c_reset} ${c_worktree}%s${c_reset}\n" "$worktree_root"
+    \\            if [ -n "$entered_subdir" ]; then
+    \\                printf "${c_label}Subdirectory:${c_reset} ${c_subdir}%s${c_reset}\n" "$entered_subdir"
+    \\            fi
+    \\        else
+    \\            printf "\nEntered worktree: %s\n" "$worktree_root"
+    \\            if [ -n "$entered_subdir" ]; then
+    \\                printf "Subdirectory: %s\n" "$entered_subdir"
+    \\            fi
+    \\        fi
+    \\    }
+    \\
     \\    if [ "$#" -eq 0 ]; then
     \\        local relative_subdir
     \\        relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
@@ -108,7 +158,7 @@ const bash_init =
     \\            fi
     \\        fi
     \\        cd "$target_dir" || return 1
-    \\        echo "Entered worktree: $target_dir"
+    \\        __wt_report_location "$selected_path" "$target_dir"
     \\        return 0
     \\    fi
     \\
@@ -131,7 +181,7 @@ const bash_init =
     \\                    fi
     \\                fi
     \\                cd "$target_dir" || return 1
-    \\                echo "Entered worktree: $target_dir"
+    \\                __wt_report_location "$output" "$target_dir"
     \\            fi
     \\            return $exit_code
     \\            ;;
@@ -161,6 +211,11 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "new|add") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "\"$1\" --porcelain") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt __pick-worktree") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_report_location()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "printf \"\\nEntered worktree: %s\\n\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "printf \"Subdirectory: %s\\n\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_report_location \"$selected_path\" \"$target_dir\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_report_location \"$output\" \"$target_dir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "awk -F") == null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "git rev-parse --show-prefix") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "candidate_dir=\"$selected_path/$relative_subdir\"") != null);
@@ -168,7 +223,6 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "candidate_dir=\"$output/$relative_subdir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "Subdirectory missing in new worktree, using root: $output") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "cd \"$target_dir\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "Entered worktree: $target_dir") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt") != null);
 }
 
@@ -178,6 +232,11 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "new|add") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "\"$1\" --porcelain") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "wt __pick-worktree") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_report_location()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "printf \"\\nEntered worktree: %s\\n\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "printf \"Subdirectory: %s\\n\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_report_location \"$selected_path\" \"$target_dir\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_report_location \"$output\" \"$target_dir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "awk -F") == null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "git rev-parse --show-prefix") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "candidate_dir=\"$selected_path/$relative_subdir\"") != null);
@@ -185,5 +244,4 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "candidate_dir=\"$output/$relative_subdir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "Subdirectory missing in new worktree, using root: $output") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "cd \"$target_dir\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bash_init, "Entered worktree: $target_dir") != null);
 }
