@@ -33,9 +33,31 @@ fn buildFishCommandCompletions() []const u8 {
     return out;
 }
 
+fn buildNuCommandChoices() []const u8 {
+    comptime var out: []const u8 = "";
+    inline for (cli_surface.completion_commands) |command| {
+        out = out ++ "        { value: \"" ++ command.name ++ "\", description: \"" ++ command.description ++ "\" }\n";
+        inline for (command.aliases) |alias| {
+            out = out ++ "        { value: \"" ++ alias ++ "\", description: \"Alias for " ++ command.name ++ "\" }\n";
+        }
+    }
+    return out;
+}
+
+fn buildNuShellNameChoices() []const u8 {
+    comptime var out: []const u8 = "";
+    inline for (cli_surface.shell_names, 0..) |shell_name, idx| {
+        if (idx != 0) out = out ++ " ";
+        out = out ++ "\"" ++ shell_name ++ "\"";
+    }
+    return out;
+}
+
 const zsh_command_choices = buildZshCommandChoices();
 const shell_name_choices = buildShellNameChoices();
 const fish_command_completions = buildFishCommandCompletions();
+const nu_command_choices = buildNuCommandChoices();
+const nu_shell_name_choices = buildNuShellNameChoices();
 
 const zsh_init =
     \\# wt shell integration
@@ -412,7 +434,7 @@ const bash_init =
     \\            if [[ "$cur" == -* ]]; then
     \\                COMPREPLY=($(compgen -W "--help -h" -- "$cur"))
     \\            else
-    \\                COMPREPLY=($(compgen -W "zsh bash fish" -- "$cur"))
+    \\                COMPREPLY=($(compgen -W "zsh bash fish nu" -- "$cur"))
     \\            fi
     \\            return 0
     \\            ;;
@@ -555,6 +577,221 @@ const fish_init =
     \\end
 ;
 
+const nu_init =
+    \\# wt shell integration
+    \\# Add to config.nu:
+    \\# wt shell-init nu | save -f ~/.config/nushell/wt.nu
+    \\# source ~/.config/nushell/wt.nu
+    \\
+    \\def "nu-complete wt commands" [] {
+    \\    [
+++ nu_command_choices ++
+    \\    ]
+    \\}
+    \\
+    \\def "__wt_complete_local_branches" [] {
+    \\    let refs = (^git for-each-ref --format='%(refname:short)' refs/heads err> /dev/null | complete)
+    \\    if $refs.exit_code != 0 {
+    \\        return []
+    \\    }
+    \\    $refs.stdout
+    \\    | lines
+    \\    | each {|it| $it | str trim}
+    \\    | where {|it| $it != ""}
+    \\    | uniq
+    \\}
+    \\
+    \\def "__wt_complete_refs" [] {
+    \\    let refs = (^git for-each-ref --format='%(refname:short)' refs/heads refs/remotes err> /dev/null | complete)
+    \\    if $refs.exit_code != 0 {
+    \\        return []
+    \\    }
+    \\    $refs.stdout
+    \\    | lines
+    \\    | each {|it| $it | str trim}
+    \\    | where {|it| $it != ""}
+    \\    | uniq
+    \\}
+    \\
+    \\def "__wt_complete_rm_branches" [] {
+    \\    let listing = (^wt list --porcelain err> /dev/null | complete)
+    \\    if $listing.exit_code != 0 {
+    \\        return []
+    \\    }
+    \\    $listing.stdout
+    \\    | lines
+    \\    | each {|line| $line | split row "\t"}
+    \\    | where {|cols| ($cols | length) >= 2}
+    \\    | each {|cols| { current: ($cols | get 0), branch: ($cols | get 1) }}
+    \\    | where {|row| $row.current != "1" and $row.branch != "(detached)" and $row.branch != "-"}
+    \\    | get branch
+    \\    | uniq
+    \\}
+    \\
+    \\def "__wt_complete_shell_names" [] {
+    \\    [
+++ nu_shell_name_choices ++
+    \\    ]
+    \\}
+    \\
+    \\def "nu-complete wt" [spans: list<string>] {
+    \\    let total = ($spans | length)
+    \\    if $total <= 2 {
+    \\        return (nu-complete wt commands)
+    \\    }
+    \\
+    \\    let cmd = ($spans | get 1)
+    \\    match $cmd {
+    \\        "new" | "add" => {
+    \\            let positional = ($spans | skip 2 | where {|arg| not ($arg | str starts-with "-")})
+    \\            if ($positional | length) <= 1 {
+    \\                return (__wt_complete_local_branches)
+    \\            }
+    \\            if ($positional | length) == 2 {
+    \\                return (__wt_complete_refs)
+    \\            }
+    \\            return []
+    \\        }
+    \\        "rm" => {
+    \\            let positional = ($spans | skip 2 | where {|arg| not ($arg | str starts-with "-")})
+    \\            if ($positional | length) <= 1 {
+    \\                return (__wt_complete_rm_branches)
+    \\            }
+    \\            return []
+    \\        }
+    \\        "shell-init" => {
+    \\            let positional = ($spans | skip 2 | where {|arg| not ($arg | str starts-with "-")})
+    \\            if ($positional | length) <= 1 {
+    \\                return (__wt_complete_shell_names)
+    \\            }
+    \\            return []
+    \\        }
+    \\        _ => {
+    \\            return []
+    \\        }
+    \\    }
+    \\}
+    \\
+    \\def "__wt_print_stderr" [result: record] {
+    \\    if ("stderr" in ($result | columns)) and (not ($result.stderr | is-empty)) {
+    \\        print --stderr --raw --no-newline $result.stderr
+    \\    }
+    \\}
+    \\
+    \\def "__wt_relative_subdir" [] {
+    \\    let relative = (^git rev-parse --show-prefix err> /dev/null | complete)
+    \\    if $relative.exit_code != 0 {
+    \\        return ""
+    \\    }
+    \\    $relative.stdout | str trim | str trim --right --char '/'
+    \\}
+    \\
+    \\def "__wt_report_location" [worktree_root: string, target_dir: string] {
+    \\    let entered_subdir = if $target_dir == $worktree_root {
+    \\        ""
+    \\    } else {
+    \\        let root_prefix = $"($worktree_root)/"
+    \\        if ($target_dir | str starts-with $root_prefix) {
+    \\            let prefix_len = ($root_prefix | str length)
+    \\            $target_dir | str substring ($prefix_len)..
+    \\        } else {
+    \\            $target_dir
+    \\        }
+    \\    }
+    \\
+    \\    print ""
+    \\    print $"Entered worktree: ($worktree_root)"
+    \\    if $entered_subdir != "" {
+    \\        print $"Subdirectory: ($entered_subdir)"
+    \\    }
+    \\}
+    \\
+    \\@complete 'nu-complete wt'
+    \\def --env --wrapped wt [...args] {
+    \\    if ($args | is-empty) {
+    \\        let relative_subdir = (__wt_relative_subdir)
+    \\        let picked = (^wt __pick-worktree | complete)
+    \\        __wt_print_stderr $picked
+    \\        $env.LAST_EXIT_CODE = $picked.exit_code
+    \\        if $picked.exit_code != 0 {
+    \\            return
+    \\        }
+    \\
+    \\        let selected_path = ($picked.stdout | str trim)
+    \\        if $selected_path == "" {
+    \\            return
+    \\        }
+    \\        if not ($selected_path | path exists) {
+    \\            print --stderr $"Error: selected worktree no longer exists: ($selected_path)"
+    \\            $env.LAST_EXIT_CODE = 1
+    \\            return
+    \\        }
+    \\
+    \\        let target_dir = if $relative_subdir == "" {
+    \\            $selected_path
+    \\        } else {
+    \\            let candidate_dir = ($selected_path | path join $relative_subdir)
+    \\            if ($candidate_dir | path exists) {
+    \\                $candidate_dir
+    \\            } else {
+    \\                print $"Subdirectory missing in selected worktree, using root: ($selected_path)"
+    \\                $selected_path
+    \\            }
+    \\        }
+    \\
+    \\        cd $target_dir
+    \\        __wt_report_location $selected_path $target_dir
+    \\        $env.LAST_EXIT_CODE = 0
+    \\        return
+    \\    }
+    \\
+    \\    let cmd = ($args | first)
+    \\    if ($cmd | str starts-with "-") {
+    \\        ^wt ...$args
+    \\        return
+    \\    }
+    \\
+    \\    match $cmd {
+    \\        "new" | "add" => {
+    \\            let passthrough = ($args | skip 1)
+    \\            if ($passthrough | any {|arg| $arg == "-h" or $arg == "--help"}) {
+    \\                ^wt ...$args
+    \\                return
+    \\            }
+    \\
+    \\            let relative_subdir = (__wt_relative_subdir)
+    \\            let created = (^wt $cmd --porcelain ...$passthrough | complete)
+    \\            __wt_print_stderr $created
+    \\            $env.LAST_EXIT_CODE = $created.exit_code
+    \\            if $created.exit_code != 0 {
+    \\                return
+    \\            }
+    \\
+    \\            let output = ($created.stdout | str trim)
+    \\            if $output != "" and ($output | path exists) {
+    \\                let target_dir = if $relative_subdir == "" {
+    \\                    $output
+    \\                } else {
+    \\                    let candidate_dir = ($output | path join $relative_subdir)
+    \\                    if ($candidate_dir | path exists) {
+    \\                        $candidate_dir
+    \\                    } else {
+    \\                        print $"Subdirectory missing in new worktree, using root: ($output)"
+    \\                        $output
+    \\                    }
+    \\                }
+    \\                cd $target_dir
+    \\                __wt_report_location $output $target_dir
+    \\            }
+    \\            return
+    \\        }
+    \\        _ => {
+    \\            ^wt ...$args
+    \\        }
+    \\    }
+    \\}
+;
+
 pub fn run(shell: []const u8) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
     const stderr = std.fs.File.stderr().deprecatedWriter();
@@ -566,8 +803,10 @@ pub fn run(shell: []const u8) !void {
         try stdout.print("{s}\n", .{bash_init});
     } else if (std.mem.eql(u8, shell, "fish")) {
         try stdout.print("{s}\n", .{fish_init});
+    } else if (std.mem.eql(u8, shell, "nu") or std.mem.eql(u8, shell, "nushell")) {
+        try stdout.print("{s}\n", .{nu_init});
     } else {
-        try ui.printLevel(stderr, use_color, .err, "unsupported shell: {s}. Supported: zsh, bash, fish", .{shell});
+        try ui.printLevel(stderr, use_color, .err, "unsupported shell: {s}. Supported: zsh, bash, fish, nu", .{shell});
         std.process.exit(1);
     }
 }
@@ -585,7 +824,7 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'init:Create or upgrade .wt.toml'") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'shell-init:Output shell integration function'") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt list --porcelain") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -- zsh bash fish") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -- zsh bash fish nu") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "git for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "git for-each-ref --format='%(refname:short)' refs/heads refs/remotes 2>/dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "if [ \"$CURRENT\" -eq 3 ]; then") != null);
@@ -643,7 +882,7 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "_wt_bash_completion()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"list new add rm init shell-init --help -h --version -V\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"auto builtin fzf\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"zsh bash fish\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"zsh bash fish nu\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "complete -F _wt_bash_completion wt") != null);
 }
 
@@ -656,7 +895,7 @@ test "fish init contains function definition and completion" {
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"list\" -d \"List worktrees\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"add\" -d \"Alias for new\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_seen_subcommand_from new add; and test (count (commandline -opc)) -eq 2\" -a \"(__wt_complete_local_branches)\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_seen_subcommand_from shell-init; and test (count (commandline -opc)) -eq 2\" -a \"zsh bash fish\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_seen_subcommand_from shell-init; and test (count (commandline -opc)) -eq 2\" -a \"zsh bash fish nu\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "function wt --wraps wt --description 'wt shell integration'") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "string match -qr '^-' -- \"$first\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "command wt __pick-worktree") != null);
@@ -671,4 +910,27 @@ test "fish init contains function definition and completion" {
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "--force") == null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "--no-interactive") == null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "--version") == null);
+}
+
+test "nu init contains wrapper and completion definitions" {
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "@complete 'nu-complete wt'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "def --env --wrapped wt [...args]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"nu-complete wt\" [spans: list<string>]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"nu-complete wt commands\" []") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "{ value: \"new\", description: \"Create a new worktree\" }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "{ value: \"add\", description: \"Alias for new\" }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_local_branches\" []") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^git for-each-ref --format='%(refname:short)' refs/heads err> /dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^git for-each-ref --format='%(refname:short)' refs/heads refs/remotes err> /dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_rm_branches\" []") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt list --porcelain err> /dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_shell_names\" []") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "\"zsh\" \"bash\" \"fish\" \"nu\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __pick-worktree | complete") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt $cmd --porcelain ...$passthrough | complete") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "__wt_report_location $selected_path $target_dir") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "__wt_report_location $output $target_dir") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "Subdirectory missing in selected worktree, using root: ($selected_path)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "Subdirectory missing in new worktree, using root: ($output)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "$env.LAST_EXIT_CODE = $created.exit_code") != null);
 }

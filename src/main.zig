@@ -160,7 +160,7 @@ fn buildShellInitCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocat
 
     try cmd.addPositionalArg(.{
         .name = "SHELL",
-        .description = "Shell name: zsh, bash, fish",
+        .description = "Shell name: zsh, bash, fish, nu",
         .required = false,
     });
     return cmd;
@@ -232,7 +232,7 @@ fn runShellInit(ctx: zli.CommandContext) !void {
     const shell = ctx.getArg("SHELL") orelse {
         const stderr = std.fs.File.stderr().deprecatedWriter();
         const use_color = ui.shouldUseColor(std.fs.File.stderr());
-        try ui.printLevel(stderr, use_color, .err, "shell name required (zsh, bash, fish)", .{});
+        try ui.printLevel(stderr, use_color, .err, "shell name required (zsh, bash, fish, nu)", .{});
         std.process.exit(1);
     };
 
