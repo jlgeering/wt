@@ -4,9 +4,9 @@
 
 It helps you create, list, and remove worktrees with consistent naming and optional per-repo setup automation.
 
-## Status
+## Disclaimer
 
-`wt` is actively used but still experimental. Expect rough edges and occasional breaking behavior changes.
+`wt` is a vibe-coded project and remains experimental. It is actively used, but rough edges and breaking behavior changes are expected.
 
 ## Worktree Naming
 
