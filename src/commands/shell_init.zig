@@ -330,6 +330,90 @@ const bash_init =
     \\            ;;
     \\    esac
     \\}
+    \\
+    \\__wt_complete_worktree_branches() {
+    \\    local current branch _rest
+    \\    command wt list --porcelain 2>/dev/null | while IFS=$'\t' read -r current branch _rest; do
+    \\        if [ "$current" = "1" ]; then
+    \\            continue
+    \\        fi
+    \\        if [ -n "$branch" ] && [ "$branch" != "-" ]; then
+    \\            printf '%s\n' "$branch"
+    \\        fi
+    \\    done
+    \\}
+    \\
+    \\_wt_bash_completion() {
+    \\    local cur prev cmd
+    \\    COMPREPLY=()
+    \\    cur="${COMP_WORDS[COMP_CWORD]}"
+    \\    prev=""
+    \\    if [ "$COMP_CWORD" -gt 0 ]; then
+    \\        prev="${COMP_WORDS[COMP_CWORD-1]}"
+    \\    fi
+    \\    cmd=""
+    \\    if [ "${#COMP_WORDS[@]}" -gt 1 ]; then
+    \\        cmd="${COMP_WORDS[1]}"
+    \\    fi
+    \\
+    \\    if [ "$COMP_CWORD" -eq 1 ]; then
+    \\        COMPREPLY=($(compgen -W "list new add rm init shell-init --help -h --version -V" -- "$cur"))
+    \\        return 0
+    \\    fi
+    \\
+    \\    case "$cmd" in
+    \\        list)
+    \\            COMPREPLY=($(compgen -W "--help -h --porcelain" -- "$cur"))
+    \\            return 0
+    \\            ;;
+    \\        new|add)
+    \\            if [[ "$cur" == -* ]]; then
+    \\                COMPREPLY=($(compgen -W "--help -h --porcelain" -- "$cur"))
+    \\                return 0
+    \\            fi
+    \\            if [ "$COMP_CWORD" -eq 3 ]; then
+    \\                local refs
+    \\                refs=$(command git for-each-ref --format='%(refname:short)' refs/heads refs/remotes 2>/dev/null)
+    \\                COMPREPLY=($(compgen -W "$refs" -- "$cur"))
+    \\            fi
+    \\            return 0
+    \\            ;;
+    \\        rm)
+    \\            if [ "$prev" = "--picker" ]; then
+    \\                COMPREPLY=($(compgen -W "auto builtin fzf" -- "$cur"))
+    \\                return 0
+    \\            fi
+    \\            if [[ "$cur" == -* ]]; then
+    \\                COMPREPLY=($(compgen -W "--help -h --force -f --picker --no-interactive" -- "$cur"))
+    \\                return 0
+    \\            fi
+    \\            local branches
+    \\            branches=$(__wt_complete_worktree_branches)
+    \\            COMPREPLY=($(compgen -W "$branches" -- "$cur"))
+    \\            return 0
+    \\            ;;
+    \\        init)
+    \\            COMPREPLY=($(compgen -W "--help -h" -- "$cur"))
+    \\            return 0
+    \\            ;;
+    \\        shell-init)
+    \\            if [[ "$cur" == -* ]]; then
+    \\                COMPREPLY=($(compgen -W "--help -h" -- "$cur"))
+    \\            else
+    \\                COMPREPLY=($(compgen -W "bash zsh" -- "$cur"))
+    \\            fi
+    \\            return 0
+    \\            ;;
+    \\        *)
+    \\            if [[ "$cur" == -* ]]; then
+    \\                COMPREPLY=($(compgen -W "--help -h --version -V" -- "$cur"))
+    \\            fi
+    \\            return 0
+    \\            ;;
+    \\    esac
+    \\}
+    \\
+    \\complete -F _wt_bash_completion wt
 ;
 
 pub fn run(shell: []const u8) !void {
@@ -413,4 +497,11 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "candidate_dir=\"$output/$relative_subdir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "Subdirectory missing in new worktree, using root: $output") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "cd \"$target_dir\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_worktree_branches()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "command wt list --porcelain") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "_wt_bash_completion()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"list new add rm init shell-init --help -h --version -V\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"auto builtin fzf\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"bash zsh\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "complete -F _wt_bash_completion wt") != null);
 }
