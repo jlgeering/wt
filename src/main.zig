@@ -5,6 +5,7 @@ const build_options = @import("build_options");
 const list_cmd = @import("commands/list.zig");
 const new_cmd = @import("commands/new.zig");
 const rm_cmd = @import("commands/rm.zig");
+const pick_worktree_cmd = @import("commands/pick_worktree.zig");
 const shell_init_cmd = @import("commands/shell_init.zig");
 const init_cmd = @import("commands/init.zig");
 
@@ -71,6 +72,14 @@ pub fn main() !void {
     try cmd_shell_init.addArg(Arg.positional("SHELL", "Shell name: zsh, bash", null));
     try wt.addSubcommand(cmd_shell_init);
 
+    var cmd_pick_worktree = app.createCommand("__pick-worktree", "Internal: interactive worktree picker");
+    try cmd_pick_worktree.addArg(Arg.singleValueOption(
+        "picker",
+        null,
+        "Picker backend for interactive mode (auto|builtin|fzf)",
+    ));
+    try wt.addSubcommand(cmd_pick_worktree);
+
     try wt.addSubcommand(app.createCommand("init", "Create or upgrade .wt.toml with guided recommendations"));
 
     app.process_args = try std.process.argsAlloc(allocator);
@@ -113,6 +122,13 @@ pub fn main() !void {
             std.process.exit(1);
         };
         try shell_init_cmd.run(shell);
+    } else if (matches.subcommandMatches("__pick-worktree")) |pick_matches| {
+        const picker_raw = pick_matches.getSingleValue("picker") orelse "auto";
+        const picker_mode = pick_worktree_cmd.parsePickerMode(picker_raw) catch {
+            std.debug.print("Error: invalid picker '{s}'. Expected auto, builtin, or fzf\n", .{picker_raw});
+            std.process.exit(1);
+        };
+        try pick_worktree_cmd.run(allocator, picker_mode);
     } else if (matches.subcommandMatches("init")) |_| {
         try init_cmd.run(allocator);
     }
