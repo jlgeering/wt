@@ -78,7 +78,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_lib_tests.step);
 
     // Smoke-test help rendering paths so regressions fail `zig build test`.
-    addHelpSmokeCheck(b, test_step, exe, &.{ "--help" }, "Usage: wt [OPTIONS] [COMMAND]");
+    addHelpSmokeCheck(b, test_step, exe, &.{"--help"}, "Usage: wt [OPTIONS] [COMMAND]");
     addHelpSmokeCheck(b, test_step, exe, &.{ "list", "--help" }, "Usage: wt list [options]");
     addHelpSmokeCheck(b, test_step, exe, &.{ "rm", "--help" }, "Usage: wt rm [options] [BRANCH]");
     addHelpSmokeCheck(b, test_step, exe, &.{ "shell-init", "--help" }, "Usage: wt shell-init [options] [SHELL]");
