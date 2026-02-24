@@ -68,6 +68,14 @@ const zsh_init =
     \\
     \\    case "$1" in
     \\        new|add)
+    \\            local arg
+    \\            for arg in "${@:2}"; do
+    \\                if [ "$arg" = "-h" ] || [ "$arg" = "--help" ]; then
+    \\                    command wt "$@"
+    \\                    return $?
+    \\                fi
+    \\            done
+    \\
     \\            local relative_subdir
     \\            relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
     \\            relative_subdir="${relative_subdir%/}"
@@ -164,6 +172,14 @@ const bash_init =
     \\
     \\    case "$1" in
     \\        new|add)
+    \\            local arg
+    \\            for arg in "${@:2}"; do
+    \\                if [ "$arg" = "-h" ] || [ "$arg" = "--help" ]; then
+    \\                    command wt "$@"
+    \\                    return $?
+    \\                fi
+    \\            done
+    \\
     \\            local relative_subdir
     \\            relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
     \\            relative_subdir="${relative_subdir%/}"
@@ -209,6 +225,8 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "${1#-}") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "new|add") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "for arg in \"${@:2}\"; do") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "[ \"$arg\" = \"--help\" ]") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "\"$1\" --porcelain") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt __pick-worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_report_location()") != null);
@@ -230,6 +248,8 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "wt()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "${1#-}") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "new|add") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "for arg in \"${@:2}\"; do") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "[ \"$arg\" = \"--help\" ]") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "\"$1\" --porcelain") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "wt __pick-worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_report_location()") != null);

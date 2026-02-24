@@ -78,6 +78,7 @@ fn buildListCommand(allocator: std.mem.Allocator) !*zli.Command {
         .description = "Print machine-readable output only",
         .type = .Bool,
         .default_value = .{ .Bool = false },
+        .hidden = true,
     });
     return cmd;
 }
@@ -94,6 +95,7 @@ fn buildNewCommand(allocator: std.mem.Allocator) !*zli.Command {
         .description = "Print machine-readable output only",
         .type = .Bool,
         .default_value = .{ .Bool = false },
+        .hidden = true,
     });
     try cmd.addPositionalArg(.{
         .name = "BRANCH",
