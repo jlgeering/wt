@@ -1,4 +1,4 @@
-# Shell Integration (zsh and bash)
+# Shell Integration (zsh, bash, and fish)
 
 ## zsh
 
@@ -22,7 +22,7 @@ When loaded via `wt shell-init zsh`, `wt` also registers zsh completion for:
 - positionals:
   - `wt new|add <branch> [base]`: git refs
   - `wt rm [branch]`: branch names from `wt list --porcelain` (excluding current worktree branch)
-  - `wt shell-init <shell>`: `zsh`, `bash`
+  - `wt shell-init <shell>`: `zsh`, `bash`, `fish`
 
 Completion intentionally does not suggest flags.
 
@@ -41,6 +41,32 @@ Reload your shell:
 ```bash
 source ~/.bashrc
 ```
+
+## fish
+
+Add the integration function to your `~/.config/fish/config.fish`:
+
+```fish
+if type -q wt
+  wt shell-init fish | source
+end
+```
+
+Reload your shell:
+
+```fish
+source ~/.config/fish/config.fish
+```
+
+When loaded via `wt shell-init fish`, `wt` also registers fish completion for:
+
+- subcommands (`list`, `new`, `add`, `rm`, `init`, `shell-init`)
+- positionals:
+  - `wt new|add <branch> [base]`: git refs
+  - `wt rm [branch]`: branch names from `wt list --porcelain` (excluding current worktree branch)
+  - `wt shell-init <shell>`: `zsh`, `bash`, `fish`
+
+Completion intentionally does not suggest flags.
 
 ## Behavior
 

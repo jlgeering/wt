@@ -11,19 +11,20 @@ wt --version
 wt shell-init <shell>
 ```
 
-Supported shells for `shell-init` are `zsh` and `bash`.
-When using `wt shell-init bash`, the emitted shell code also registers a Bash completion function for `wt`.
+Supported shells for `shell-init` are `zsh`, `bash`, and `fish`.
 
 Use `wt <command> --help` for command details.
 
-## zsh completion via shell-init
+## Completion via shell-init
 
-When users load `eval "$(wt shell-init zsh)"`, `wt` registers zsh completion for:
+When users load `wt shell-init bash` (via `eval`), `wt` registers Bash completion for subcommands, command-specific flags/values, and relevant positional values.
+
+When users load `wt shell-init zsh` (via `eval`) or `wt shell-init fish` (via `source`), `wt` registers completion for:
 
 - subcommands (`list`, `new`, `add`, `rm`, `init`, `shell-init`)
 - positional arguments for `new|add`, `rm`, and `shell-init`
 
-zsh completion intentionally does not suggest flags.
+zsh/fish completion intentionally does not suggest flags.
 
 ## `wt rm` interaction model
 

@@ -43,17 +43,26 @@ wt rm demo-branch
 
 - `zsh`: primary shell, regularly tested (recommended)
 - `bash`: supported, but less frequently tested
+- `fish`: supported, but less frequently tested
 - other shells: may work, but are not regularly tested
 
 ## Shell Integration
 
-Example (`zsh`):
+Examples:
 
 ```bash
 if command -v wt >/dev/null 2>&1; then
   eval "$(wt shell-init zsh)"
 fi
 ```
+
+```fish
+if type -q wt
+  wt shell-init fish | source
+end
+```
+
+Shell-init integration registers completion for `zsh`, `bash`, and `fish`.
 
 ## Core Commands
 
