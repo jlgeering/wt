@@ -69,7 +69,7 @@ test "integration: setup actions run against a real worktree" {
     var cfg = try config.loadConfigFile(allocator, repo_path);
     defer cfg.deinit();
 
-    try setup.runAllSetup(allocator, cfg.value, repo_path, wt_path, .human);
+    try setup.runAllSetup(allocator, cfg.value, repo_path, wt_path, .quiet);
 
     try std.fs.cwd().access(wt_path, .{});
     try expectBranchExists(repo_path, "feat-setup-int");

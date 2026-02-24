@@ -13,6 +13,21 @@ fn resolveGitSha(b: *std.Build) []const u8 {
     return b.allocator.dupe(u8, trimmed) catch "unknown";
 }
 
+fn addHelpSmokeCheck(
+    b: *std.Build,
+    test_step: *std.Build.Step,
+    exe: *std.Build.Step.Compile,
+    args: []const []const u8,
+    expected_usage: []const u8,
+) void {
+    const run_help = b.addRunArtifact(exe);
+    run_help.addArgs(args);
+    run_help.addCheck(.{ .expect_stdout_match = expected_usage });
+    run_help.expectStdErrEqual("");
+    run_help.expectExitCode(0);
+    test_step.dependOn(&run_help.step);
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -63,25 +78,11 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_lib_tests.step);
 
     // Smoke-test help rendering paths so regressions fail `zig build test`.
-    const run_help_root = b.addRunArtifact(exe);
-    run_help_root.addArg("--help");
-    test_step.dependOn(&run_help_root.step);
-
-    const run_help_list = b.addRunArtifact(exe);
-    run_help_list.addArgs(&.{ "list", "--help" });
-    test_step.dependOn(&run_help_list.step);
-
-    const run_help_rm = b.addRunArtifact(exe);
-    run_help_rm.addArgs(&.{ "rm", "--help" });
-    test_step.dependOn(&run_help_rm.step);
-
-    const run_help_shell_init = b.addRunArtifact(exe);
-    run_help_shell_init.addArgs(&.{ "shell-init", "--help" });
-    test_step.dependOn(&run_help_shell_init.step);
-
-    const run_help_pick_worktree = b.addRunArtifact(exe);
-    run_help_pick_worktree.addArgs(&.{ "__pick-worktree", "--help" });
-    test_step.dependOn(&run_help_pick_worktree.step);
+    addHelpSmokeCheck(b, test_step, exe, &.{ "--help" }, "Usage: wt [OPTIONS] [COMMAND]");
+    addHelpSmokeCheck(b, test_step, exe, &.{ "list", "--help" }, "Usage: wt list [options]");
+    addHelpSmokeCheck(b, test_step, exe, &.{ "rm", "--help" }, "Usage: wt rm [options] [BRANCH]");
+    addHelpSmokeCheck(b, test_step, exe, &.{ "shell-init", "--help" }, "Usage: wt shell-init [options] [SHELL]");
+    addHelpSmokeCheck(b, test_step, exe, &.{ "__pick-worktree", "--help" }, "Usage: wt __pick-worktree [options]");
 
     const wt_lib_module = b.createModule(.{
         .root_source_file = b.path("src/lib/root.zig"),
