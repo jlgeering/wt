@@ -1,5 +1,5 @@
 const std = @import("std");
-const yazap = @import("yazap");
+const zli = @import("zli");
 const build_options = @import("build_options");
 
 const list_cmd = @import("commands/list.zig");
@@ -8,9 +8,6 @@ const rm_cmd = @import("commands/rm.zig");
 const pick_worktree_cmd = @import("commands/pick_worktree.zig");
 const shell_init_cmd = @import("commands/shell_init.zig");
 const init_cmd = @import("commands/init.zig");
-
-const App = yazap.App;
-const Arg = yazap.Arg;
 
 const root_description =
     "Git worktree manager\n" ++
@@ -23,73 +20,233 @@ const root_description =
     "\n" ++
     "Use `wt <command> --help` for command details.";
 
-fn normalizeArgvForAliases(
-    allocator: std.mem.Allocator,
-    argv: []const [:0]u8,
-) ![][:0]const u8 {
-    var normalized = try allocator.alloc([:0]const u8, argv.len);
-    for (argv, 0..) |arg, idx| {
-        normalized[idx] = arg;
+const root_help_text =
+    root_description ++
+    "\n\n" ++
+    "Usage: wt [OPTIONS] [COMMAND]\n\n" ++
+    "Commands:\n" ++
+    "    list                                          List worktrees (WT, BASE, UPSTREAM); use --porcelain for machine output\n" ++
+    "    new                                           Create a new worktree (alias: add)\n" ++
+    "    rm                                            Remove a worktree (picker status: clean|dirty plus optional local-commits)\n" ++
+    "    init                                          Create or upgrade .wt.toml with guided recommendations\n\n" ++
+    "Options:\n" ++
+    "    -V, --version                                 Print version and exit\n" ++
+    "    -h, --help                                    Print this help and exit\n\n" ++
+    "Run 'wt <command>` with `-h/--h' flag to get help of any command.\n";
+
+fn shouldPrintCustomRootHelp(allocator: std.mem.Allocator) !bool {
+    const argv = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, argv);
+
+    if (argv.len <= 1) {
+        return true;
     }
 
-    if (normalized.len > 1 and std.mem.eql(u8, normalized[1], "add")) {
-        normalized[1] = "new";
-    }
-
-    return normalized;
+    return std.mem.eql(u8, argv[1], "--help") or std.mem.eql(u8, argv[1], "-h");
 }
 
-fn maybeRunHiddenShellInit(
-    allocator: std.mem.Allocator,
-    argv: []const [:0]const u8,
-) !bool {
-    if (argv.len <= 1 or !std.mem.eql(u8, argv[1], "shell-init")) {
-        return false;
+fn printRootHelp() !void {
+    try std.io.getStdOut().writer().writeAll(root_help_text);
+}
+
+fn buildRootCommand(allocator: std.mem.Allocator) !*zli.Command {
+    const root = try zli.Command.init(allocator, .{
+        .name = "wt",
+        .description = "Git worktree manager",
+        .help = root_description,
+    }, runRoot);
+
+    try root.addFlag(.{
+        .name = "version",
+        .shortcut = "V",
+        .description = "Print version and exit",
+        .type = .Bool,
+        .default_value = .{ .Bool = false },
+    });
+
+    try root.addCommands(&.{
+        try buildListCommand(allocator),
+        try buildNewCommand(allocator),
+        try buildRmCommand(allocator),
+        try buildInitCommand(allocator),
+        try buildShellInitCommand(allocator),
+        try buildPickWorktreeCommand(allocator),
+    });
+
+    return root;
+}
+
+fn buildListCommand(allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(allocator, .{
+        .name = "list",
+        .description = "List worktrees (WT, BASE, UPSTREAM); use --porcelain for machine output",
+    }, runList);
+
+    try cmd.addFlag(.{
+        .name = "porcelain",
+        .description = "Print machine-readable output only",
+        .type = .Bool,
+        .default_value = .{ .Bool = false },
+    });
+    return cmd;
+}
+
+fn buildNewCommand(allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(allocator, .{
+        .name = "new",
+        .description = "Create a new worktree (alias: add)",
+        .aliases = &.{"add"},
+    }, runNew);
+
+    try cmd.addFlag(.{
+        .name = "porcelain",
+        .description = "Print machine-readable output only",
+        .type = .Bool,
+        .default_value = .{ .Bool = false },
+    });
+    try cmd.addPositionalArg(.{
+        .name = "BRANCH",
+        .description = "Branch name",
+        .required = false,
+    });
+    try cmd.addPositionalArg(.{
+        .name = "BASE",
+        .description = "Base ref (default: HEAD)",
+        .required = false,
+    });
+    return cmd;
+}
+
+fn buildRmCommand(allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(allocator, .{
+        .name = "rm",
+        .description = "Remove a worktree (picker status: clean|dirty plus optional local-commits)",
+    }, runRm);
+
+    try cmd.addPositionalArg(.{
+        .name = "BRANCH",
+        .description = "Branch name (omit to use interactive picker)",
+        .required = false,
+    });
+    try cmd.addFlag(.{
+        .name = "force",
+        .shortcut = "f",
+        .description = "Force removal without safety confirmation (dirty/local-commits)",
+        .type = .Bool,
+        .default_value = .{ .Bool = false },
+    });
+    try cmd.addFlag(.{
+        .name = "picker",
+        .description = "Picker backend for interactive mode (auto|builtin|fzf)",
+        .type = .String,
+        .default_value = .{ .String = "auto" },
+    });
+    try cmd.addFlag(.{
+        .name = "no-interactive",
+        .description = "Disable interactive picker when BRANCH is omitted",
+        .type = .Bool,
+        .default_value = .{ .Bool = false },
+    });
+    return cmd;
+}
+
+fn buildInitCommand(allocator: std.mem.Allocator) !*zli.Command {
+    return zli.Command.init(allocator, .{
+        .name = "init",
+        .description = "Create or upgrade .wt.toml with guided recommendations",
+    }, runInit);
+}
+
+fn buildShellInitCommand(allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(allocator, .{
+        .name = "shell-init",
+        .description = "Output shell integration function",
+        .section_title = "Internal",
+    }, runShellInit);
+
+    try cmd.addPositionalArg(.{
+        .name = "SHELL",
+        .description = "Shell name: zsh, bash",
+        .required = false,
+    });
+    return cmd;
+}
+
+fn buildPickWorktreeCommand(allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(allocator, .{
+        .name = "__pick-worktree",
+        .description = "Internal: interactive worktree picker",
+        .section_title = "Internal",
+    }, runPickWorktree);
+
+    try cmd.addFlag(.{
+        .name = "picker",
+        .description = "Picker backend for interactive mode (auto|builtin|fzf)",
+        .type = .String,
+        .default_value = .{ .String = "auto" },
+    });
+    return cmd;
+}
+
+fn runRoot(ctx: zli.CommandContext) !void {
+    if (ctx.flag("version", bool)) {
+        try std.io.getStdOut().writer().print("wt {s} ({s})\n", .{ build_options.version, build_options.git_sha });
+        return;
     }
 
-    var shell_app = App.init(allocator, "wt shell-init", "Output shell integration function");
-    defer shell_app.deinit();
+    try printRootHelp();
+}
 
-    var shell_cmd = shell_app.rootCommand();
-    try shell_cmd.addArg(Arg.positional("SHELL", "Shell name: zsh, bash", null));
+fn runList(ctx: zli.CommandContext) !void {
+    try list_cmd.run(ctx.allocator, ctx.flag("porcelain", bool));
+}
 
-    const shell_matches = try shell_app.parseFrom(argv[2..]);
-    const shell = shell_matches.getSingleValue("SHELL") orelse {
+fn runNew(ctx: zli.CommandContext) !void {
+    const branch = ctx.getArg("BRANCH") orelse {
+        std.debug.print("Error: branch name required\n", .{});
+        std.process.exit(1);
+    };
+    const base = ctx.getArg("BASE") orelse "HEAD";
+
+    try new_cmd.run(ctx.allocator, branch, base, ctx.flag("porcelain", bool));
+}
+
+fn runRm(ctx: zli.CommandContext) !void {
+    const picker_raw = ctx.flag("picker", []const u8);
+    const picker_mode = rm_cmd.parsePickerMode(picker_raw) catch {
+        std.debug.print("Error: invalid picker '{s}'. Expected auto, builtin, or fzf\n", .{picker_raw});
+        std.process.exit(1);
+    };
+
+    try rm_cmd.run(ctx.allocator, .{
+        .branch_arg = ctx.getArg("BRANCH"),
+        .force = ctx.flag("force", bool),
+        .picker_mode = picker_mode,
+        .no_interactive = ctx.flag("no-interactive", bool),
+    });
+}
+
+fn runInit(ctx: zli.CommandContext) !void {
+    try init_cmd.run(ctx.allocator);
+}
+
+fn runShellInit(ctx: zli.CommandContext) !void {
+    const shell = ctx.getArg("SHELL") orelse {
         std.debug.print("Error: shell name required (zsh, bash)\n", .{});
         std.process.exit(1);
     };
 
     try shell_init_cmd.run(shell);
-    return true;
 }
 
-fn maybeRunHiddenPickWorktree(
-    allocator: std.mem.Allocator,
-    argv: []const [:0]const u8,
-) !bool {
-    if (argv.len <= 1 or !std.mem.eql(u8, argv[1], "__pick-worktree")) {
-        return false;
-    }
-
-    var pick_app = App.init(allocator, "wt __pick-worktree", "Internal: interactive worktree picker");
-    defer pick_app.deinit();
-
-    var pick_cmd = pick_app.rootCommand();
-    try pick_cmd.addArg(Arg.singleValueOption(
-        "picker",
-        null,
-        "Picker backend for interactive mode (auto|builtin|fzf)",
-    ));
-
-    const pick_matches = try pick_app.parseFrom(argv[2..]);
-    const picker_raw = pick_matches.getSingleValue("picker") orelse "auto";
+fn runPickWorktree(ctx: zli.CommandContext) !void {
+    const picker_raw = ctx.flag("picker", []const u8);
     const picker_mode = pick_worktree_cmd.parsePickerMode(picker_raw) catch {
         std.debug.print("Error: invalid picker '{s}'. Expected auto, builtin, or fzf\n", .{picker_raw});
         std.process.exit(1);
     };
 
-    try pick_worktree_cmd.run(allocator, picker_mode);
-    return true;
+    try pick_worktree_cmd.run(ctx.allocator, picker_mode);
 }
 
 pub fn main() !void {
@@ -97,84 +254,13 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var app = App.init(allocator, "wt", root_description);
-    defer app.deinit();
-
-    var wt = app.rootCommand();
-    wt.setProperty(.help_on_empty_args);
-    try wt.addArg(Arg.booleanOption("version", 'V', "Print version and exit"));
-
-    var cmd_list = app.createCommand(
-        "list",
-        "List worktrees (WT, BASE, UPSTREAM); use --porcelain for machine output",
-    );
-    try cmd_list.addArg(Arg.booleanOption("porcelain", null, "Print machine-readable output only"));
-    try wt.addSubcommand(cmd_list);
-
-    var cmd_new = app.createCommand("new", "Create a new worktree (alias: add)");
-    try cmd_new.addArg(Arg.booleanOption("porcelain", null, "Print machine-readable output only"));
-    try cmd_new.addArg(Arg.positional("BRANCH", "Branch name", null));
-    try cmd_new.addArg(Arg.positional("BASE", "Base ref (default: HEAD)", null));
-    try wt.addSubcommand(cmd_new);
-
-    var cmd_rm = app.createCommand(
-        "rm",
-        "Remove a worktree (picker status: clean|dirty plus optional local-commits)",
-    );
-    try cmd_rm.addArg(Arg.positional("BRANCH", "Branch name (omit to use interactive picker)", null));
-    try cmd_rm.addArg(Arg.booleanOption("force", 'f', "Force removal without safety confirmation (dirty/local-commits)"));
-    try cmd_rm.addArg(Arg.singleValueOption(
-        "picker",
-        null,
-        "Picker backend for interactive mode (auto|builtin|fzf)",
-    ));
-    try cmd_rm.addArg(Arg.booleanOption("no-interactive", null, "Disable interactive picker when BRANCH is omitted"));
-    try wt.addSubcommand(cmd_rm);
-
-    try wt.addSubcommand(app.createCommand("init", "Create or upgrade .wt.toml with guided recommendations"));
-
-    app.process_args = try std.process.argsAlloc(allocator);
-    const parse_argv = try normalizeArgvForAliases(allocator, app.process_args.?);
-    defer allocator.free(parse_argv);
-
-    if (try maybeRunHiddenShellInit(allocator, parse_argv)) {
-        return;
-    }
-    if (try maybeRunHiddenPickWorktree(allocator, parse_argv)) {
+    if (try shouldPrintCustomRootHelp(allocator)) {
+        try printRootHelp();
         return;
     }
 
-    const matches = try app.parseFrom(parse_argv[1..]);
-    if (matches.containsArg("version")) {
-        std.debug.print("wt {s} ({s})\n", .{ build_options.version, build_options.git_sha });
-        return;
-    }
+    const root = try buildRootCommand(allocator);
+    defer root.deinit();
 
-    if (matches.subcommandMatches("list")) |list_matches| {
-        const porcelain = list_matches.containsArg("porcelain");
-        try list_cmd.run(allocator, porcelain);
-    } else if (matches.subcommandMatches("new")) |new_matches| {
-        const branch = new_matches.getSingleValue("BRANCH") orelse {
-            std.debug.print("Error: branch name required\n", .{});
-            std.process.exit(1);
-        };
-        const base = new_matches.getSingleValue("BASE") orelse "HEAD";
-        const porcelain = new_matches.containsArg("porcelain");
-        try new_cmd.run(allocator, branch, base, porcelain);
-    } else if (matches.subcommandMatches("rm")) |rm_matches| {
-        const picker_raw = rm_matches.getSingleValue("picker") orelse "auto";
-        const picker_mode = rm_cmd.parsePickerMode(picker_raw) catch {
-            std.debug.print("Error: invalid picker '{s}'. Expected auto, builtin, or fzf\n", .{picker_raw});
-            std.process.exit(1);
-        };
-
-        try rm_cmd.run(allocator, .{
-            .branch_arg = rm_matches.getSingleValue("BRANCH"),
-            .force = rm_matches.containsArg("force"),
-            .picker_mode = picker_mode,
-            .no_interactive = rm_matches.containsArg("no-interactive"),
-        });
-    } else if (matches.subcommandMatches("init")) |_| {
-        try init_cmd.run(allocator);
-    }
+    try root.execute(.{});
 }
