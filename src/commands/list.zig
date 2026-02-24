@@ -259,6 +259,7 @@ pub fn run(allocator: std.mem.Allocator, porcelain: bool) !void {
     const base_branch = worktrees[0].branch;
 
     if (!porcelain) {
+        try stdout.writeAll("\n");
         try writeHumanHeader(stdout);
     }
 

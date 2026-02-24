@@ -78,9 +78,9 @@ fn selectViaBuiltin(
     use_color: bool,
 ) !?usize {
     if (use_color) {
-        try stderr.print("{s}{s}{s}\n", .{ ui.ansi.bold, "Choose a worktree:", ui.ansi.reset });
+        try stderr.print("\n{s}{s}{s}\n", .{ ui.ansi.bold, "Choose a worktree:", ui.ansi.reset });
     } else {
-        try stderr.writeAll("Choose a worktree:\n");
+        try stderr.writeAll("\nChoose a worktree:\n");
     }
 
     for (rows, 0..) |row, idx| {

@@ -19,6 +19,8 @@ pub const Level = enum {
     err,
 };
 
+var has_printed_level: bool = false;
+
 pub fn shouldUseColor(file: std.fs.File) bool {
     return file.isTty() and !std.process.hasEnvVarConstant("NO_COLOR");
 }
@@ -30,6 +32,11 @@ pub fn printLevel(
     comptime fmt: []const u8,
     args: anytype,
 ) !void {
+    if (!has_printed_level) {
+        try writer.writeByte('\n');
+        has_printed_level = true;
+    }
+
     const label = levelLabel(level);
     if (use_color) {
         try writer.print("{s}{s}{s}{s} ", .{
@@ -46,6 +53,10 @@ pub fn printLevel(
     if (!std.mem.endsWith(u8, fmt, "\n")) {
         try writer.writeByte('\n');
     }
+}
+
+fn resetPrintLevelStateForTests() void {
+    has_printed_level = false;
 }
 
 fn levelLabel(level: Level) []const u8 {
@@ -67,13 +78,15 @@ fn levelColor(level: Level) []const u8 {
 }
 
 test "printLevel includes level labels in plain mode" {
+    resetPrintLevelStateForTests();
     var out_buf: [256]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&out_buf);
     try printLevel(fbs.writer(), false, .warn, "hello {s}", .{"world"});
-    try std.testing.expectEqualStrings("Warning: hello world\n", fbs.getWritten());
+    try std.testing.expectEqualStrings("\nWarning: hello world\n", fbs.getWritten());
 }
 
 test "printLevel includes ansi in color mode" {
+    resetPrintLevelStateForTests();
     var out_buf: [256]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&out_buf);
     try printLevel(fbs.writer(), true, .success, "done", .{});

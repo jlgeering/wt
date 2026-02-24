@@ -315,7 +315,7 @@ fn selectViaBuiltin(
     candidates: []const RemovalCandidate,
     use_color: bool,
 ) !?usize {
-    try stdout.writeAll("Choose a worktree to remove:\n");
+    try stdout.writeAll("\nChoose a worktree to remove:\n");
     for (candidates, 0..) |candidate, idx| {
         try printCandidateRow(stdout, use_color, idx, candidate);
     }

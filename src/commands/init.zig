@@ -330,7 +330,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
     var baseline = try editable.clone(allocator);
     defer baseline.deinit();
 
-    try stdout.print("Repository: {s}\n", .{repo_root});
+    try stdout.print("\nRepository: {s}\n", .{repo_root});
 
     const recommendations = try init_planner.discoverRecommendations(allocator, repo_root);
     defer init_planner.freeRecommendations(allocator, recommendations);
