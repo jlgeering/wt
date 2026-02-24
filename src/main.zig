@@ -9,16 +9,7 @@ const pick_worktree_cmd = @import("commands/pick_worktree.zig");
 const shell_init_cmd = @import("commands/shell_init.zig");
 const init_cmd = @import("commands/init.zig");
 
-const root_description =
-    "Git worktree manager\n" ++
-    "\n" ++
-    "Quick start:\n" ++
-    "  wt list\n" ++
-    "  wt new <branch> [base]\n" ++
-    "  wt rm [branch]\n" ++
-    "  wt init\n" ++
-    "\n" ++
-    "Use `wt <command> --help` for command details.";
+const root_description = "Git worktree manager";
 
 const root_help_text =
     root_description ++
