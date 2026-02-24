@@ -20,7 +20,7 @@ pub fn build(b: *std.Build) void {
     const git_sha = resolveGitSha(b);
 
     // Dependencies
-    const yazap_dep = b.dependency("yazap", .{});
+    const zli_dep = b.dependency("zli", .{});
     const toml_dep = b.dependency("toml", .{});
     const build_options = b.addOptions();
     build_options.addOption([]const u8, "version", app_version);
@@ -33,7 +33,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    exe.root_module.addImport("yazap", yazap_dep.module("yazap"));
+    exe.root_module.addImport("zli", zli_dep.module("zli"));
     exe.root_module.addImport("toml", toml_dep.module("toml"));
     exe.root_module.addOptions("build_options", build_options);
     b.installArtifact(exe);
@@ -68,6 +68,14 @@ pub fn build(b: *std.Build) void {
     const run_help_rm = b.addRunArtifact(exe);
     run_help_rm.addArgs(&.{ "rm", "--help" });
     test_step.dependOn(&run_help_rm.step);
+
+    const run_help_shell_init = b.addRunArtifact(exe);
+    run_help_shell_init.addArgs(&.{ "shell-init", "--help" });
+    test_step.dependOn(&run_help_shell_init.step);
+
+    const run_help_pick_worktree = b.addRunArtifact(exe);
+    run_help_pick_worktree.addArgs(&.{ "__pick-worktree", "--help" });
+    test_step.dependOn(&run_help_pick_worktree.step);
 
     const integration_lib_tests = b.addTest(.{
         .root_source_file = b.path("test/integration_lib.zig"),
