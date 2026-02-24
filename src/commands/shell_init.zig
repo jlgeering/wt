@@ -11,6 +11,9 @@ const zsh_init =
     \\    fi
     \\
     \\    if [ "$#" -eq 0 ]; then
+    \\        local relative_subdir
+    \\        relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
+    \\        relative_subdir="${relative_subdir%/}"
     \\        local selected_path
     \\        selected_path=$(command wt __pick-worktree)
     \\        local pick_exit=$?
@@ -24,8 +27,17 @@ const zsh_init =
     \\            echo "Error: selected worktree no longer exists: $selected_path" >&2
     \\            return 1
     \\        fi
-    \\        cd "$selected_path" || return 1
-    \\        echo "Entered worktree: $selected_path"
+    \\        local target_dir="$selected_path"
+    \\        if [ -n "$relative_subdir" ]; then
+    \\            local candidate_dir="$selected_path/$relative_subdir"
+    \\            if [ -d "$candidate_dir" ]; then
+    \\                target_dir="$candidate_dir"
+    \\            else
+    \\                echo "Subdirectory missing in selected worktree, using root: $selected_path"
+    \\            fi
+    \\        fi
+    \\        cd "$target_dir" || return 1
+    \\        echo "Entered worktree: $target_dir"
     \\        return 0
     \\    fi
     \\
@@ -70,6 +82,9 @@ const bash_init =
     \\    fi
     \\
     \\    if [ "$#" -eq 0 ]; then
+    \\        local relative_subdir
+    \\        relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
+    \\        relative_subdir="${relative_subdir%/}"
     \\        local selected_path
     \\        selected_path=$(command wt __pick-worktree)
     \\        local pick_exit=$?
@@ -83,8 +98,17 @@ const bash_init =
     \\            echo "Error: selected worktree no longer exists: $selected_path" >&2
     \\            return 1
     \\        fi
-    \\        cd "$selected_path" || return 1
-    \\        echo "Entered worktree: $selected_path"
+    \\        local target_dir="$selected_path"
+    \\        if [ -n "$relative_subdir" ]; then
+    \\            local candidate_dir="$selected_path/$relative_subdir"
+    \\            if [ -d "$candidate_dir" ]; then
+    \\                target_dir="$candidate_dir"
+    \\            else
+    \\                echo "Subdirectory missing in selected worktree, using root: $selected_path"
+    \\            fi
+    \\        fi
+    \\        cd "$target_dir" || return 1
+    \\        echo "Entered worktree: $target_dir"
     \\        return 0
     \\    fi
     \\
@@ -139,11 +163,12 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt __pick-worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "awk -F") == null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "git rev-parse --show-prefix") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "candidate_dir=\"$selected_path/$relative_subdir\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "Subdirectory missing in selected worktree, using root: $selected_path") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "candidate_dir=\"$output/$relative_subdir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "Subdirectory missing in new worktree, using root: $output") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "cd \"$target_dir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "Entered worktree: $target_dir") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "Entered worktree: $selected_path") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt") != null);
 }
 
@@ -155,9 +180,10 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "wt __pick-worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "awk -F") == null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "git rev-parse --show-prefix") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "candidate_dir=\"$selected_path/$relative_subdir\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "Subdirectory missing in selected worktree, using root: $selected_path") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "candidate_dir=\"$output/$relative_subdir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "Subdirectory missing in new worktree, using root: $output") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "cd \"$target_dir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "Entered worktree: $target_dir") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bash_init, "Entered worktree: $selected_path") != null);
 }

@@ -34,7 +34,11 @@ source ~/.bashrc
 
 ## Behavior
 
-- Running `wt` with no arguments opens a worktree picker and changes directory to the selected worktree.
+- Running `wt` with no arguments opens a worktree picker.
+- Before picker selection, it captures the current repo-relative subdirectory via `git rev-parse --show-prefix`.
+- After selection:
+  - it prefers `cd "<selected-worktree>/<relative-subdir>"` when that path exists.
+  - if the subdirectory is missing in the selected worktree, it prints a note and falls back to `cd "<selected-worktree>"`.
 - Picker rows include branch, status, and path.
 - Picker backend for no-arg `wt` mirrors `wt rm --picker auto`: use `fzf` when available, otherwise use a built-in numbered prompt.
 - When only one worktree exists, no picker is shown; the wrapper prints a notice and returns without changing directories.
@@ -63,4 +67,5 @@ wt
 pwd
 ```
 
-After `wt new demo-branch`, `pwd` should show the same relative subdirectory in the new worktree when present; otherwise it should show the new worktree root.
+After `wt new demo-branch`, `pwd` should show the same relative subdirectory in the new worktree when present; otherwise it should show the new worktree root.  
+After running bare `wt` from that subdirectory and selecting another worktree, it should preserve the same relative subdirectory when present, otherwise land at that selected worktree root.
