@@ -23,7 +23,7 @@ const root_help_text =
     "Options:\n" ++
     "    -V, --version                                 Print version and exit\n" ++
     "    -h, --help                                    Print this help and exit\n\n" ++
-    "Run 'wt <command>` with `-h/--h' flag to get help of any command.\n";
+    "Use `wt <command> --help` for command details.\n";
 
 fn shouldPrintCustomRootHelp(allocator: std.mem.Allocator) !bool {
     const argv = try std.process.argsAlloc(allocator);
