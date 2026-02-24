@@ -16,6 +16,16 @@ Reload your shell:
 source ~/.zshrc
 ```
 
+When loaded via `wt shell-init zsh`, `wt` also registers zsh completion for:
+
+- subcommands (`list`, `new`, `add`, `rm`, `init`, `shell-init`)
+- positionals:
+  - `wt new|add <branch> [base]`: git refs
+  - `wt rm [branch]`: branch names from `wt list --porcelain` (excluding current worktree branch)
+  - `wt shell-init <shell>`: `zsh`, `bash`
+
+Completion intentionally does not suggest flags.
+
 ## bash
 
 Add the integration function to your `~/.bashrc`:

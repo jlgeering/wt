@@ -1,9 +1,110 @@
 const std = @import("std");
 const ui = @import("../lib/ui.zig");
+const cli_surface = @import("../lib/cli_surface.zig");
+
+fn buildZshCommandChoices() []const u8 {
+    comptime var out: []const u8 = "";
+    inline for (cli_surface.completion_commands) |command| {
+        out = out ++ "        '" ++ command.name ++ ":" ++ command.description ++ "'\n";
+        inline for (command.aliases) |alias| {
+            out = out ++ "        '" ++ alias ++ ":Alias for " ++ command.name ++ "'\n";
+        }
+    }
+    return out;
+}
+
+fn buildShellNameChoices() []const u8 {
+    comptime var out: []const u8 = "";
+    inline for (cli_surface.shell_names, 0..) |shell_name, idx| {
+        if (idx != 0) out = out ++ " ";
+        out = out ++ shell_name;
+    }
+    return out;
+}
+
+const zsh_command_choices = buildZshCommandChoices();
+const shell_name_choices = buildShellNameChoices();
 
 const zsh_init =
     \\# wt shell integration
     \\# Add to .zshrc: eval "$(wt shell-init zsh)"
+    \\
+    \\__wt_complete_refs() {
+    \\    local ref
+    \\    local -a refs
+    \\    typeset -A seen
+    \\    while IFS= read -r ref; do
+    \\        if [ -z "$ref" ]; then
+    \\            continue
+    \\        fi
+    \\        if [ -z "${seen[$ref]}" ]; then
+    \\            seen[$ref]=1
+    \\            refs+=("$ref")
+    \\        fi
+    \\    done < <(command git for-each-ref --format='%(refname:short)' refs/heads refs/remotes 2>/dev/null)
+    \\    if [ "${#refs[@]}" -gt 0 ]; then
+    \\        compadd -- "${refs[@]}"
+    \\    fi
+    \\}
+    \\
+    \\__wt_complete_rm_branches() {
+    \\    local current branch
+    \\    local -a branches
+    \\    typeset -A seen
+    \\    while IFS=$'\t' read -r current branch _; do
+    \\        if [ -z "$branch" ] || [ "$branch" = "(detached)" ] || [ "$branch" = "-" ]; then
+    \\            continue
+    \\        fi
+    \\        if [ "$current" = "1" ]; then
+    \\            continue
+    \\        fi
+    \\        if [ -z "${seen[$branch]}" ]; then
+    \\            seen[$branch]=1
+    \\            branches+=("$branch")
+    \\        fi
+    \\    done < <(command wt list --porcelain 2>/dev/null)
+    \\    if [ "${#branches[@]}" -gt 0 ]; then
+    \\        compadd -- "${branches[@]}"
+    \\    fi
+    \\}
+    \\
+    \\_wt() {
+    \\    local cmd="$words[2]"
+    \\    local -a commands
+    \\    commands=(
+ ++ zsh_command_choices ++
+    \\    )
+    \\
+    \\    if [ "$CURRENT" -eq 2 ]; then
+    \\        _describe -t commands "wt command" commands
+    \\        return 0
+    \\    fi
+    \\
+    \\    if [ "$CURRENT" -lt 3 ]; then
+    \\        return 0
+    \\    fi
+    \\
+    \\    case "$cmd" in
+    \\        new|add)
+    \\            if [ "$CURRENT" -eq 3 ] || [ "$CURRENT" -eq 4 ]; then
+    \\                __wt_complete_refs
+    \\            fi
+    \\            ;;
+    \\        rm)
+    \\            if [ "$CURRENT" -eq 3 ]; then
+    \\                __wt_complete_rm_branches
+    \\            fi
+    \\            ;;
+    \\        shell-init)
+    \\            if [ "$CURRENT" -eq 3 ]; then
+    \\
+ ++ "                compadd -- " ++ shell_name_choices ++ "\n" ++
+    \\            fi
+    \\            ;;
+    \\    esac
+    \\
+    \\    return 0
+    \\}
     \\
     \\wt() {
     \\    if [ "$#" -gt 0 ] && [ "${1#-}" != "$1" ]; then
@@ -103,6 +204,8 @@ const zsh_init =
     \\            ;;
     \\    esac
     \\}
+    \\
+    \\compdef _wt wt
 ;
 
 const bash_init =
@@ -225,6 +328,23 @@ pub fn run(shell: []const u8) !void {
 }
 
 test "zsh init contains function definition" {
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_refs()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_rm_branches()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "_wt()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compdef _wt wt") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'list:List worktrees'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'new:Create a new worktree'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'add:Alias for new'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'rm:Remove a worktree'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'init:Create or upgrade .wt.toml'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'shell-init:Output shell integration function'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt list --porcelain") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -- zsh bash") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "_arguments") == null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "--picker") == null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "--force") == null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "--no-interactive") == null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "--version") == null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "${1#-}") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "new|add") != null);

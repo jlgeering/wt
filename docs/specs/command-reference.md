@@ -15,6 +15,15 @@ Supported shells for `shell-init` are `zsh` and `bash`.
 
 Use `wt <command> --help` for command details.
 
+## zsh completion via shell-init
+
+When users load `eval "$(wt shell-init zsh)"`, `wt` registers zsh completion for:
+
+- subcommands (`list`, `new`, `add`, `rm`, `init`, `shell-init`)
+- positional arguments for `new|add`, `rm`, and `shell-init`
+
+zsh completion intentionally does not suggest flags.
+
 ## `wt rm` interaction model
 
 - `wt rm <branch>` removes the named worktree (existing behavior).

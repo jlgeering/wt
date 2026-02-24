@@ -90,6 +90,8 @@ if command -v wt >/dev/null 2>&1; then
 fi
 ```
 
+This zsh integration also registers minimal completion for commands and positionals (branch/base/shell), with no flag suggestions.
+
 Full setup and behavior:
 - `docs/guides/shell-integration.md`
 - `docs/guides/troubleshooting.md`
