@@ -44,6 +44,7 @@ wt rm demo-branch
 - `zsh`: primary shell, regularly tested (recommended)
 - `bash`: supported, but less frequently tested
 - `fish`: supported, but less frequently tested
+- `nu` (`nushell` accepted by `shell-init`): supported
 - other shells: may work, but are not regularly tested
 
 ## Shell Integration
@@ -62,7 +63,14 @@ if type -q wt
 end
 ```
 
-Shell-init integration registers completion for `zsh`, `bash`, and `fish`.
+Example (`nushell`):
+
+```nu
+if (which wt | is-not-empty) {
+  wt shell-init nu | save -f ~/.config/nushell/wt.nu
+  source ~/.config/nushell/wt.nu
+}
+```
 
 ## Core Commands
 
@@ -74,6 +82,12 @@ wt init
 wt --version
 wt shell-init <shell>
 ```
+
+Supported shell targets for `shell-init`: `zsh`, `bash`, `fish`, and `nu` (alias: `nushell`).
+
+Detailed command contracts and output schemas:
+- `docs/specs/command-reference.md`
+- `docs/specs/init-and-config.md`
 
 ## Worktree Naming
 

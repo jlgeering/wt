@@ -1,4 +1,4 @@
-# Shell Integration (zsh, bash, and fish)
+# Shell Integration (zsh, bash, fish, and nushell)
 
 ## zsh
 
@@ -68,6 +68,23 @@ When loaded via `wt shell-init fish`, `wt` also registers fish completion for:
 
 Completion intentionally does not suggest flags.
 
+## nushell
+
+Generate and source the integration script from your Nushell config:
+
+```nu
+if (which wt | is-not-empty) {
+  wt shell-init nu | save -f ~/.config/nushell/wt.nu
+  source ~/.config/nushell/wt.nu
+}
+```
+
+The `nu` integration provides:
+
+- the same no-arg picker and `new|add` auto-`cd` behavior as zsh/bash.
+- completion for subcommands and key positionals (`new|add`, `rm`, `shell-init`).
+- shell aliases accepted by `shell-init`: `zsh`, `bash`, `fish`, `nu` (`nushell` is also accepted).
+
 ## Behavior
 
 - Running `wt` with no arguments opens a worktree picker.
@@ -88,12 +105,12 @@ Completion intentionally does not suggest flags.
   - it prefers `cd "$output/<relative-subdir>"` when that path exists.
   - if the subdirectory is missing in the new worktree, it prints a note and falls back to `cd "$output"`.
 - After changing directories, it prints the same summary block (`Entered worktree` and optional `Subdirectory`).
-- All other subcommands are passed through unchanged via `command wt "$@"`.
+- All other subcommands are passed through unchanged to the `wt` binary (`command wt` in zsh/bash, `command wt` in fish, `^wt` in nushell).
 
 ## Notes
 
 - The wrapper function is intentionally named `wt`, the same as the binary.
-- Inside the function, `command wt` bypasses the function and invokes the real binary.
+- Inside the wrapper, shell-specific bypass forms (`command wt` for zsh/bash/fish, `^wt` for nushell) invoke the real binary.
 - Bash integration also installs tab completion for `wt` (subcommands, common flags, `rm --picker` values, and `shell-init` shell names).
 
 ## Quick verification
