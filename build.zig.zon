@@ -2,15 +2,15 @@
     .name = .wt,
     .version = "0.1.0",
     .fingerprint = 0x76cf48eb058cbd18,
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.15.0",
     .dependencies = .{
         .toml = .{
-            .url = "git+https://github.com/sam701/zig-toml?ref=last-zig-0.14.1#d65ed6023e51cafe80ba20af56a3b5d551efd067",
-            .hash = "toml-0.3.0-bV14BVp6AQDWCtjvbZNKxOU6OzBJtDUaLZ5oay1__3wJ",
+            .url = "git+https://github.com/sam701/zig-toml?ref=zig-0.15#cf50bd59c6276fb2b6d34b8d71d35486eecc719c",
+            .hash = "toml-0.3.0-bV14Bd-EAQBKoXhpYft303BtA2vgLNlxntUCIWgRUl46",
         },
         .zli = .{
-            .url = "https://github.com/xcaeser/zli/archive/v3.7.1.tar.gz",
-            .hash = "zli-3.7.1-LeUjpgU6AQBNLZY9yZNnldh1YGHAGVx6YBjoPjJhqQIz",
+            .url = "https://github.com/xcaeser/zli/archive/v4.3.0.tar.gz",
+            .hash = "zli-4.3.0-LeUjpmbfAACPnRj2nzbzaLMNfTkq-LEWSC9EfOcnFxjl",
         },
     },
     .paths = .{

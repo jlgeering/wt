@@ -209,7 +209,7 @@ const bash_init =
 ;
 
 pub fn run(shell: []const u8) !void {
-    const stdout = std.io.getStdOut().writer();
+    const stdout = std.fs.File.stdout().deprecatedWriter();
 
     if (std.mem.eql(u8, shell, "zsh")) {
         try stdout.print("{s}\n", .{zsh_init});

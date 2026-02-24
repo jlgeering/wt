@@ -92,7 +92,7 @@ fn promptYesNo(
         }
 
         var buf: [256]u8 = undefined;
-        const response = try stdin_file.reader().readUntilDelimiterOrEof(&buf, '\n');
+        const response = try stdin_file.deprecatedReader().readUntilDelimiterOrEof(&buf, '\n');
         if (response == null) return default_yes;
 
         const trimmed = std.mem.trim(u8, response.?, " \t\r\n");
@@ -162,7 +162,7 @@ fn promptApplyDecision(stdout: anytype, stdin_file: std.fs.File) !ApplyDecision 
         }
 
         var buf: [256]u8 = undefined;
-        const response = try stdin_file.reader().readUntilDelimiterOrEof(&buf, '\n');
+        const response = try stdin_file.deprecatedReader().readUntilDelimiterOrEof(&buf, '\n');
         if (response == null) return .apply_all;
 
         if (applyDecisionFromLineInput(response.?)) |decision| return decision;
@@ -197,7 +197,7 @@ fn promptDeclineDecision(stdout: anytype, stdin_file: std.fs.File) !DeclineDecis
         }
 
         var buf: [256]u8 = undefined;
-        const response = try stdin_file.reader().readUntilDelimiterOrEof(&buf, '\n');
+        const response = try stdin_file.deprecatedReader().readUntilDelimiterOrEof(&buf, '\n');
         if (response == null) return .review;
 
         if (declineDecisionFromLineInput(response.?)) |decision| return decision;
@@ -207,7 +207,7 @@ fn promptDeclineDecision(stdout: anytype, stdin_file: std.fs.File) !DeclineDecis
 }
 
 fn shouldUseColor() bool {
-    return std.io.getStdOut().isTty() and !std.process.hasEnvVarConstant("NO_COLOR");
+    return std.fs.File.stdout().isTty() and !std.process.hasEnvVarConstant("NO_COLOR");
 }
 
 fn printHeading(stdout: anytype, use_color: bool, heading: []const u8) !void {
@@ -298,8 +298,8 @@ fn writeFile(path: []const u8, content: []const u8) !void {
 }
 
 pub fn run(allocator: std.mem.Allocator) !void {
-    const stdin_file = std.io.getStdIn();
-    const stdout = std.io.getStdOut().writer();
+    const stdin_file = std.fs.File.stdin();
+    const stdout = std.fs.File.stdout().deprecatedWriter();
     const use_color = shouldUseColor();
 
     if (!stdin_file.isTty()) {

@@ -37,11 +37,11 @@ fn shouldPrintCustomRootHelp(allocator: std.mem.Allocator) !bool {
 }
 
 fn printRootHelp() !void {
-    try std.io.getStdOut().writer().writeAll(root_help_text);
+    try std.fs.File.stdout().deprecatedWriter().writeAll(root_help_text);
 }
 
-fn buildRootCommand(allocator: std.mem.Allocator) !*zli.Command {
-    const root = try zli.Command.init(allocator, .{
+fn buildRootCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    const root = try zli.Command.init(writer, reader, allocator, .{
         .name = "wt",
         .description = "Git worktree manager",
         .help = root_description,
@@ -56,19 +56,19 @@ fn buildRootCommand(allocator: std.mem.Allocator) !*zli.Command {
     });
 
     try root.addCommands(&.{
-        try buildListCommand(allocator),
-        try buildNewCommand(allocator),
-        try buildRmCommand(allocator),
-        try buildInitCommand(allocator),
-        try buildShellInitCommand(allocator),
-        try buildPickWorktreeCommand(allocator),
+        try buildListCommand(writer, reader, allocator),
+        try buildNewCommand(writer, reader, allocator),
+        try buildRmCommand(writer, reader, allocator),
+        try buildInitCommand(writer, reader, allocator),
+        try buildShellInitCommand(writer, reader, allocator),
+        try buildPickWorktreeCommand(writer, reader, allocator),
     });
 
     return root;
 }
 
-fn buildListCommand(allocator: std.mem.Allocator) !*zli.Command {
-    const cmd = try zli.Command.init(allocator, .{
+fn buildListCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(writer, reader, allocator, .{
         .name = "list",
         .description = "List worktrees (WT, BASE, UPSTREAM); use --porcelain for machine output",
     }, runList);
@@ -83,8 +83,8 @@ fn buildListCommand(allocator: std.mem.Allocator) !*zli.Command {
     return cmd;
 }
 
-fn buildNewCommand(allocator: std.mem.Allocator) !*zli.Command {
-    const cmd = try zli.Command.init(allocator, .{
+fn buildNewCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(writer, reader, allocator, .{
         .name = "new",
         .description = "Create a new worktree (alias: add)",
         .aliases = &.{"add"},
@@ -110,8 +110,8 @@ fn buildNewCommand(allocator: std.mem.Allocator) !*zli.Command {
     return cmd;
 }
 
-fn buildRmCommand(allocator: std.mem.Allocator) !*zli.Command {
-    const cmd = try zli.Command.init(allocator, .{
+fn buildRmCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(writer, reader, allocator, .{
         .name = "rm",
         .description = "Remove a worktree (picker status: clean|dirty plus optional local-commits)",
     }, runRm);
@@ -143,15 +143,15 @@ fn buildRmCommand(allocator: std.mem.Allocator) !*zli.Command {
     return cmd;
 }
 
-fn buildInitCommand(allocator: std.mem.Allocator) !*zli.Command {
-    return zli.Command.init(allocator, .{
+fn buildInitCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    return zli.Command.init(writer, reader, allocator, .{
         .name = "init",
         .description = "Create or upgrade .wt.toml with guided recommendations",
     }, runInit);
 }
 
-fn buildShellInitCommand(allocator: std.mem.Allocator) !*zli.Command {
-    const cmd = try zli.Command.init(allocator, .{
+fn buildShellInitCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(writer, reader, allocator, .{
         .name = "shell-init",
         .description = "Output shell integration function",
         .section_title = "Internal",
@@ -165,8 +165,8 @@ fn buildShellInitCommand(allocator: std.mem.Allocator) !*zli.Command {
     return cmd;
 }
 
-fn buildPickWorktreeCommand(allocator: std.mem.Allocator) !*zli.Command {
-    const cmd = try zli.Command.init(allocator, .{
+fn buildPickWorktreeCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(writer, reader, allocator, .{
         .name = "__pick-worktree",
         .description = "Internal: interactive worktree picker",
         .section_title = "Internal",
@@ -183,7 +183,7 @@ fn buildPickWorktreeCommand(allocator: std.mem.Allocator) !*zli.Command {
 
 fn runRoot(ctx: zli.CommandContext) !void {
     if (ctx.flag("version", bool)) {
-        try std.io.getStdOut().writer().print("wt {s} ({s})\n", .{ build_options.version, build_options.git_sha });
+        try std.fs.File.stdout().deprecatedWriter().print("wt {s} ({s})\n", .{ build_options.version, build_options.git_sha });
         return;
     }
 
@@ -247,12 +247,18 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
+    var stdout_writer = std.fs.File.stdout().writerStreaming(&.{});
+    const stdout = &stdout_writer.interface;
+    var stdin_buffer: [4096]u8 = undefined;
+    var stdin_reader = std.fs.File.stdin().readerStreaming(&stdin_buffer);
+    const stdin = &stdin_reader.interface;
+
     if (try shouldPrintCustomRootHelp(allocator)) {
         try printRootHelp();
         return;
     }
 
-    const root = try buildRootCommand(allocator);
+    const root = try buildRootCommand(stdout, stdin, allocator);
     defer root.deinit();
 
     try root.execute(.{});

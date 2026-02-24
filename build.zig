@@ -20,18 +20,21 @@ pub fn build(b: *std.Build) void {
     const git_sha = resolveGitSha(b);
 
     // Dependencies
-    const zli_dep = b.dependency("zli", .{});
-    const toml_dep = b.dependency("toml", .{});
+    const zli_dep = b.dependency("zli", .{ .target = target, .optimize = optimize });
+    const toml_dep = b.dependency("toml", .{ .target = target, .optimize = optimize });
     const build_options = b.addOptions();
     build_options.addOption([]const u8, "version", app_version);
     build_options.addOption([]const u8, "git_sha", git_sha);
 
     // Executable
-    const exe = b.addExecutable(.{
-        .name = "wt",
+    const exe_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+    });
+    const exe = b.addExecutable(.{
+        .name = "wt",
+        .root_module = exe_module,
     });
     exe.root_module.addImport("zli", zli_dep.module("zli"));
     exe.root_module.addImport("toml", toml_dep.module("toml"));
@@ -46,12 +49,15 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     // Unit tests
-    const lib_tests = b.addTest(.{
+    const lib_test_module = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
-    lib_tests.root_module.addImport("toml", toml_dep.module("toml"));
+    lib_test_module.addImport("toml", toml_dep.module("toml"));
+    const lib_tests = b.addTest(.{
+        .root_module = lib_test_module,
+    });
     const run_lib_tests = b.addRunArtifact(lib_tests);
     const test_step = b.step("test", "Run unit and integration tests");
     test_step.dependOn(&run_lib_tests.step);
@@ -77,31 +83,36 @@ pub fn build(b: *std.Build) void {
     run_help_pick_worktree.addArgs(&.{ "__pick-worktree", "--help" });
     test_step.dependOn(&run_help_pick_worktree.step);
 
-    const integration_lib_tests = b.addTest(.{
+    const wt_lib_module = b.createModule(.{
+        .root_source_file = b.path("src/lib/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    wt_lib_module.addImport("toml", toml_dep.module("toml"));
+
+    const integration_lib_test_module = b.createModule(.{
         .root_source_file = b.path("test/integration_lib.zig"),
         .target = target,
         .optimize = optimize,
     });
-    const lib_module = b.createModule(.{
-        .root_source_file = b.path("src/lib/root.zig"),
+    integration_lib_test_module.addImport("wt_lib", wt_lib_module);
+    integration_lib_test_module.addImport("toml", toml_dep.module("toml"));
+    const integration_lib_tests = b.addTest(.{
+        .root_module = integration_lib_test_module,
     });
-    lib_module.addImport("toml", toml_dep.module("toml"));
-    integration_lib_tests.root_module.addImport("wt_lib", lib_module);
-    integration_lib_tests.root_module.addImport("toml", toml_dep.module("toml"));
     const run_integration_lib_tests = b.addRunArtifact(integration_lib_tests);
     test_step.dependOn(&run_integration_lib_tests.step);
 
-    const integration_workflow_tests = b.addTest(.{
+    const integration_workflow_test_module = b.createModule(.{
         .root_source_file = b.path("test/integration_workflow.zig"),
         .target = target,
         .optimize = optimize,
     });
-    const workflow_lib_module = b.createModule(.{
-        .root_source_file = b.path("src/lib/root.zig"),
+    integration_workflow_test_module.addImport("wt_lib", wt_lib_module);
+    integration_workflow_test_module.addImport("toml", toml_dep.module("toml"));
+    const integration_workflow_tests = b.addTest(.{
+        .root_module = integration_workflow_test_module,
     });
-    workflow_lib_module.addImport("toml", toml_dep.module("toml"));
-    integration_workflow_tests.root_module.addImport("wt_lib", workflow_lib_module);
-    integration_workflow_tests.root_module.addImport("toml", toml_dep.module("toml"));
     const run_integration_workflow_tests = b.addRunArtifact(integration_workflow_tests);
     test_step.dependOn(&run_integration_workflow_tests.step);
 

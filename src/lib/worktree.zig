@@ -2,7 +2,7 @@ const std = @import("std");
 
 /// Compute the worktree path for a branch: {main_path}--{branch}
 pub fn computeWorktreePath(allocator: std.mem.Allocator, main_path: []const u8, branch: []const u8) ![]u8 {
-    var path = std.ArrayList(u8).init(allocator);
+    var path = std.array_list.Managed(u8).init(allocator);
     errdefer path.deinit();
 
     try path.appendSlice(main_path);

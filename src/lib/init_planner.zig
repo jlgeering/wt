@@ -36,16 +36,16 @@ pub const Change = struct {
 
 pub const EditableConfig = struct {
     allocator: std.mem.Allocator,
-    copy_paths: std.ArrayList([]u8),
-    symlink_paths: std.ArrayList([]u8),
-    run_commands: std.ArrayList([]u8),
+    copy_paths: std.array_list.Managed([]u8),
+    symlink_paths: std.array_list.Managed([]u8),
+    run_commands: std.array_list.Managed([]u8),
 
     pub fn init(allocator: std.mem.Allocator) EditableConfig {
         return .{
             .allocator = allocator,
-            .copy_paths = std.ArrayList([]u8).init(allocator),
-            .symlink_paths = std.ArrayList([]u8).init(allocator),
-            .run_commands = std.ArrayList([]u8).init(allocator),
+            .copy_paths = std.array_list.Managed([]u8).init(allocator),
+            .symlink_paths = std.array_list.Managed([]u8).init(allocator),
+            .run_commands = std.array_list.Managed([]u8).init(allocator),
         };
     }
 
@@ -131,7 +131,7 @@ pub const EditableConfig = struct {
         const run_sorted = try cloneSortedStrings(allocator, self.run_commands.items);
         defer freeStringSlice(allocator, run_sorted);
 
-        var out = std.ArrayList(u8).init(allocator);
+        var out = std.array_list.Managed(u8).init(allocator);
         errdefer out.deinit();
 
         const writer = out.writer();
@@ -152,7 +152,7 @@ pub const EditableConfig = struct {
         return out.toOwnedSlice();
     }
 
-    fn list(self: *EditableConfig, section: Section) *std.ArrayList([]u8) {
+    fn list(self: *EditableConfig, section: Section) *std.array_list.Managed([]u8) {
         return switch (section) {
             .copy => &self.copy_paths,
             .symlink => &self.symlink_paths,
@@ -160,7 +160,7 @@ pub const EditableConfig = struct {
         };
     }
 
-    fn listConst(self: *const EditableConfig, section: Section) *const std.ArrayList([]u8) {
+    fn listConst(self: *const EditableConfig, section: Section) *const std.array_list.Managed([]u8) {
         return switch (section) {
             .copy => &self.copy_paths,
             .symlink => &self.symlink_paths,
@@ -178,7 +178,7 @@ pub fn discoverRecommendationsWithOptions(
     repo_root: []const u8,
     options: DiscoveryOptions,
 ) ![]Recommendation {
-    var recs = std.ArrayList(Recommendation).init(allocator);
+    var recs = std.array_list.Managed(Recommendation).init(allocator);
     errdefer {
         for (recs.items) |rec| allocator.free(rec.value);
     }
@@ -286,7 +286,7 @@ fn parseMiseTrustShowOutput(output: []const u8) ?bool {
 }
 
 pub fn detectAntiPatterns(allocator: std.mem.Allocator, cfg: *const EditableConfig) ![]AntiPattern {
-    var findings = std.ArrayList(AntiPattern).init(allocator);
+    var findings = std.array_list.Managed(AntiPattern).init(allocator);
     errdefer {
         for (findings.items) |finding| allocator.free(finding.value);
     }
@@ -335,7 +335,7 @@ pub fn detectAntiPatterns(allocator: std.mem.Allocator, cfg: *const EditableConf
 }
 
 pub fn diffConfigs(allocator: std.mem.Allocator, before: *const EditableConfig, after: *const EditableConfig) ![]Change {
-    var changes = std.ArrayList(Change).init(allocator);
+    var changes = std.array_list.Managed(Change).init(allocator);
     errdefer {
         for (changes.items) |change| allocator.free(change.value);
     }
@@ -393,13 +393,13 @@ pub fn sectionName(section: Section) []const u8 {
     };
 }
 
-fn freeList(allocator: std.mem.Allocator, list: *std.ArrayList([]u8)) void {
+fn freeList(allocator: std.mem.Allocator, list: *std.array_list.Managed([]u8)) void {
     for (list.items) |item| allocator.free(item);
     list.deinit();
 }
 
 fn readRootEntries(allocator: std.mem.Allocator, repo_root: []const u8) ![]([]u8) {
-    var entries = std.ArrayList([]u8).init(allocator);
+    var entries = std.array_list.Managed([]u8).init(allocator);
     errdefer freeStringItems(allocator, entries.items);
     defer entries.deinit();
 
@@ -422,7 +422,7 @@ fn discoverForPathRule(
     repo_root: []const u8,
     root_entries: []([]u8),
     rule: init_rules.PathRule,
-    recs: *std.ArrayList(Recommendation),
+    recs: *std.array_list.Managed(Recommendation),
 ) !bool {
     var matched = false;
 
@@ -477,7 +477,7 @@ fn pathExists(allocator: std.mem.Allocator, root: []const u8, rel_path: []const 
 
 fn addRecommendationIfMissing(
     allocator: std.mem.Allocator,
-    recs: *std.ArrayList(Recommendation),
+    recs: *std.array_list.Managed(Recommendation),
     candidate: struct {
         rule_id: []const u8,
         section: Section,
@@ -504,7 +504,7 @@ fn addRecommendationIfMissing(
 
 fn addAntiPatternIfMissing(
     allocator: std.mem.Allocator,
-    findings: *std.ArrayList(AntiPattern),
+    findings: *std.array_list.Managed(AntiPattern),
     candidate: AntiPattern,
 ) !bool {
     for (findings.items) |existing| {
@@ -555,7 +555,7 @@ fn writeTomlString(writer: anytype, value: []const u8) !void {
 }
 
 fn cloneSortedStrings(allocator: std.mem.Allocator, items: []const []u8) ![]([]u8) {
-    var cloned = std.ArrayList([]u8).init(allocator);
+    var cloned = std.array_list.Managed([]u8).init(allocator);
     errdefer freeStringItems(allocator, cloned.items);
     defer cloned.deinit();
 
@@ -672,7 +672,7 @@ test "discoverRecommendations omits mise trust when repo is not trusted" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{ .sub_path = "mise.toml", .data = "[tools]\nzig = \"0.14\"\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "mise.toml", .data = "[tools]\nzig = \"0.15\"\n" });
 
     const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
     defer std.testing.allocator.free(root);
@@ -691,7 +691,7 @@ test "discoverRecommendations includes mise trust when mise.toml exists and repo
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{ .sub_path = "mise.toml", .data = "[tools]\nzig = \"0.14\"\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "mise.toml", .data = "[tools]\nzig = \"0.15\"\n" });
 
     const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
     defer std.testing.allocator.free(root);

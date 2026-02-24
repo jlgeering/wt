@@ -25,7 +25,7 @@ const WorktreeRow = struct {
 };
 
 fn shouldUseColor() bool {
-    return std.io.getStdOut().isTty() and !std.process.hasEnvVarConstant("NO_COLOR");
+    return std.fs.File.stdout().isTty() and !std.process.hasEnvVarConstant("NO_COLOR");
 }
 
 fn wtStateLabel(row: WorktreeRow) []const u8 {
@@ -237,7 +237,7 @@ fn inspectWorktree(
 }
 
 pub fn run(allocator: std.mem.Allocator, porcelain: bool) !void {
-    const stdout = std.io.getStdOut().writer();
+    const stdout = std.fs.File.stdout().deprecatedWriter();
     const use_color = shouldUseColor();
 
     const cwd = try std.process.getCwdAlloc(allocator);

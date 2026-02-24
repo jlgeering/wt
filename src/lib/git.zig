@@ -28,7 +28,7 @@ pub fn parseCountOutput(output: []const u8) !usize {
 /// Parse output of `git worktree list --porcelain` into WorktreeInfo structs.
 /// Returned slice is owned by caller. Strings point into the input buffer.
 pub fn parseWorktreeList(allocator: std.mem.Allocator, output: []const u8) ![]WorktreeInfo {
-    var worktrees = std.ArrayList(WorktreeInfo).init(allocator);
+    var worktrees = std.array_list.Managed(WorktreeInfo).init(allocator);
     defer worktrees.deinit();
 
     var current: WorktreeInfo = .{ .path = "", .head = "", .branch = null, .is_bare = false };
@@ -134,7 +134,7 @@ pub fn countUnmergedCommits(
 
 /// Run a git command and return stdout. Caller owns returned memory.
 pub fn runGit(allocator: std.mem.Allocator, cwd: ?[]const u8, args: []const []const u8) ![]u8 {
-    var argv = std.ArrayList([]const u8).init(allocator);
+    var argv = std.array_list.Managed([]const u8).init(allocator);
     defer argv.deinit();
     try argv.append("git");
     try argv.appendSlice(args);

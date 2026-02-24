@@ -1,7 +1,7 @@
 # Troubleshooting
 
 - Build fails with `root_source_file`/build API errors:
-  - You are likely using Zig `0.15.x`. Switch to Zig `0.14.x`.
+  - You are likely using an older Zig release. Switch to Zig `0.15.x`.
 - `wt: command not found` after install:
   - Ensure `~/.local/bin` is on your `PATH`, then restart your shell.
 - zsh/bash integration does not change directory after `wt new`:

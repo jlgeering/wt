@@ -81,7 +81,7 @@ fn splitSecondaryWorktrees(
     secondary_worktrees: []const git.WorktreeInfo,
     current_worktree_path: []const u8,
 ) !SecondarySplit {
-    var removable = std.ArrayList(git.WorktreeInfo).init(allocator);
+    var removable = std.array_list.Managed(git.WorktreeInfo).init(allocator);
     errdefer removable.deinit();
 
     var current_secondary: ?git.WorktreeInfo = null;
@@ -135,7 +135,7 @@ fn unsafeRemovalDecisionFromLineInput(input: []const u8) ?bool {
 }
 
 fn shouldUseColor() bool {
-    return std.io.getStdOut().isTty() and !std.process.hasEnvVarConstant("NO_COLOR");
+    return std.fs.File.stdout().isTty() and !std.process.hasEnvVarConstant("NO_COLOR");
 }
 
 fn branchDeleteAction(candidate: RemovalCandidate) BranchDeleteAction {
@@ -144,7 +144,7 @@ fn branchDeleteAction(candidate: RemovalCandidate) BranchDeleteAction {
 }
 
 fn isInteractiveSession() bool {
-    return std.io.getStdIn().isTty() and std.io.getStdOut().isTty();
+    return std.fs.File.stdin().isTty() and std.fs.File.stdout().isTty();
 }
 
 fn isSingleKeySupported(stdin_file: std.fs.File) bool {
@@ -223,7 +223,7 @@ fn promptSelectionLineMode(
 
     while (true) {
         try stdout.print("Select worktree [1-{d}], q to quit: ", .{candidate_count});
-        const response = try stdin_file.reader().readUntilDelimiterOrEof(&response_buf, '\n');
+        const response = try stdin_file.deprecatedReader().readUntilDelimiterOrEof(&response_buf, '\n');
         if (response == null) return null;
 
         const trimmed = std.mem.trim(u8, response.?, " \t\r\n");
@@ -398,7 +398,7 @@ fn selectViaFzf(
     }
 
     {
-        var input = child.stdin.?.writer();
+        var input = child.stdin.?.deprecatedWriter();
 
         var header_buf: [256]u8 = undefined;
         var header_fbs = std.io.fixedBufferStream(&header_buf);
@@ -555,7 +555,7 @@ fn buildCandidates(
     main_path: []const u8,
     secondary_worktrees: []const git.WorktreeInfo,
 ) ![]RemovalCandidate {
-    var candidates = std.ArrayList(RemovalCandidate).init(allocator);
+    var candidates = std.array_list.Managed(RemovalCandidate).init(allocator);
     errdefer candidates.deinit();
 
     for (secondary_worktrees) |wt| {
@@ -602,7 +602,7 @@ fn confirmUnsafeRemoval(
         }
 
         var response_buf: [16]u8 = undefined;
-        const response = try stdin_file.reader().readUntilDelimiterOrEof(&response_buf, '\n');
+        const response = try stdin_file.deprecatedReader().readUntilDelimiterOrEof(&response_buf, '\n');
         if (response == null) return false;
 
         if (unsafeRemovalDecisionFromLineInput(response.?)) |decision| return decision;
@@ -616,7 +616,7 @@ fn removeCandidate(
     main_path: []const u8,
     force: bool,
 ) !void {
-    const stdout = std.io.getStdOut().writer();
+    const stdout = std.fs.File.stdout().deprecatedWriter();
 
     std.fs.cwd().access(candidate.path, .{}) catch {
         std.debug.print("Error: worktree at {s} does not exist\n", .{candidate.path});
@@ -624,7 +624,7 @@ fn removeCandidate(
     };
 
     if (!force and !candidate.safe) {
-        if (!std.io.getStdIn().isTty()) {
+        if (!std.fs.File.stdin().isTty()) {
             std.debug.print("Error: worktree removal is unsafe and requires confirmation\n", .{});
             std.debug.print("Use --force to remove anyway\n", .{});
             std.process.exit(1);
@@ -633,7 +633,7 @@ fn removeCandidate(
         const target_name = candidate.branch orelse candidate.path;
         const confirmed = confirmUnsafeRemoval(
             stdout,
-            std.io.getStdIn(),
+            std.fs.File.stdin(),
             target_name,
             candidate.modified,
             candidate.untracked,
@@ -682,8 +682,8 @@ fn removeCandidate(
 }
 
 pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
-    const stdout = std.io.getStdOut().writer();
-    const stderr = std.io.getStdErr().writer();
+    const stdout = std.fs.File.stdout().deprecatedWriter();
+    const stderr = std.fs.File.stderr().deprecatedWriter();
     const use_color = shouldUseColor();
 
     const wt_output = git.runGit(allocator, null, &.{ "worktree", "list", "--porcelain" }) catch {
@@ -792,7 +792,7 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     };
 
     const selected_index = switch (resolved_mode) {
-        .builtin => try selectViaBuiltin(stdout, std.io.getStdIn(), candidates, use_color),
+        .builtin => try selectViaBuiltin(stdout, std.fs.File.stdin(), candidates, use_color),
         .fzf => selectViaFzf(allocator, candidates, use_color) catch |err| {
             switch (err) {
                 error.FzfFailed => {

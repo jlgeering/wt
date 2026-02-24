@@ -40,7 +40,7 @@ fn resolvePickerMode(allocator: std.mem.Allocator, requested: PickerMode) !Picke
 }
 
 fn isInteractiveSession() bool {
-    return std.io.getStdIn().isTty() and std.io.getStdErr().isTty();
+    return std.fs.File.stdin().isTty() and std.fs.File.stderr().isTty();
 }
 
 fn isFzfCancelTerm(term: std.process.Child.Term) bool {
@@ -89,7 +89,7 @@ fn selectViaBuiltin(
     var response_buf: [64]u8 = undefined;
     while (true) {
         try stderr.print("Select worktree [1-{d}], q to quit: ", .{rows.len});
-        const response = try stdin_file.reader().readUntilDelimiterOrEof(&response_buf, '\n');
+        const response = try stdin_file.deprecatedReader().readUntilDelimiterOrEof(&response_buf, '\n');
         if (response == null) return null;
 
         const trimmed = std.mem.trim(u8, response.?, " \t\r\n");
@@ -150,7 +150,7 @@ fn selectViaFzf(
     }
 
     {
-        var input = child.stdin.?.writer();
+        var input = child.stdin.?.deprecatedWriter();
 
         var header_buf: [256]u8 = undefined;
         var header_fbs = std.io.fixedBufferStream(&header_buf);
@@ -195,8 +195,8 @@ fn selectViaFzf(
 }
 
 pub fn run(allocator: std.mem.Allocator, requested_picker: PickerMode) !void {
-    const stdout = std.io.getStdOut().writer();
-    const stderr = std.io.getStdErr().writer();
+    const stdout = std.fs.File.stdout().deprecatedWriter();
+    const stderr = std.fs.File.stderr().deprecatedWriter();
 
     if (!isInteractiveSession()) {
         try stderr.writeAll("Error: __pick-worktree requires an interactive terminal\n");
@@ -240,7 +240,7 @@ pub fn run(allocator: std.mem.Allocator, requested_picker: PickerMode) !void {
     };
 
     const selected = switch (resolved_mode) {
-        .builtin => try selectViaBuiltin(stderr, std.io.getStdIn(), rows),
+        .builtin => try selectViaBuiltin(stderr, std.fs.File.stdin(), rows),
         .fzf => selectViaFzf(allocator, rows) catch |err| switch (err) {
             error.FzfFailed => {
                 try stderr.writeAll("Error: fzf failed while selecting a worktree\n");

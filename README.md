@@ -18,8 +18,7 @@ It helps you create, list, and remove worktrees with consistent naming and optio
 ## Prerequisites
 
 - `git` on `PATH`
-- Zig `0.14.x` (`build.zig.zon` sets `minimum_zig_version = "0.14.0"`)
-- Zig `0.15.x` is not compatible with this repo (build API mismatch such as `root_source_file`)
+- Zig `0.15.x` (`build.zig.zon` sets `minimum_zig_version = "0.15.0"`)
 
 ## Install From Source
 
@@ -55,7 +54,7 @@ mise install
 mise exec -- zig version
 ```
 
-Expected Zig version: `0.14.x` (for example, `0.14.1`).
+Expected Zig version: `0.15.x` (for example, `0.15.2`).
 
 Common tasks:
 
