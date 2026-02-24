@@ -116,6 +116,24 @@ fn isCancelResponse(input: []const u8) bool {
         std.ascii.eqlIgnoreCase(trimmed, "cancel");
 }
 
+fn unsafeRemovalDecisionFromSingleKey(key_raw: u8) ?bool {
+    const key = std.ascii.toLower(key_raw);
+    if (key == '\r' or key == '\n') return false;
+    if (key == 'y') return true;
+    if (key == 'n') return false;
+    if (isCancelKey(key_raw)) return false;
+    return null;
+}
+
+fn unsafeRemovalDecisionFromLineInput(input: []const u8) ?bool {
+    const trimmed = std.mem.trim(u8, input, " \t\r\n");
+    if (trimmed.len == 0) return false;
+    if (isConfirmedResponse(trimmed)) return true;
+    if (std.ascii.eqlIgnoreCase(trimmed, "n") or std.ascii.eqlIgnoreCase(trimmed, "no")) return false;
+    if (isCancelResponse(trimmed)) return false;
+    return null;
+}
+
 fn shouldUseColor() bool {
     return std.io.getStdOut().isTty() and !std.process.hasEnvVarConstant("NO_COLOR");
 }
@@ -550,7 +568,7 @@ fn buildCandidates(
 
 fn confirmUnsafeRemoval(
     stdout: anytype,
-    stdin: anytype,
+    stdin_file: std.fs.File,
     target_name: []const u8,
     modified: usize,
     untracked: usize,
@@ -563,12 +581,33 @@ fn confirmUnsafeRemoval(
     if (has_local_commits) {
         try stdout.writeAll("- branch has local commits not in main checkout\n");
     }
-    try stdout.print("Remove anyway? [y/N]: ", .{});
+    while (true) {
+        try stdout.print("Remove anyway? [y/N]: ", .{});
 
-    var response_buf: [16]u8 = undefined;
-    const response = try stdin.readUntilDelimiterOrEof(&response_buf, '\n');
-    if (response == null) return false;
-    return isConfirmedResponse(response.?);
+        if (try tryReadSingleKey(stdin_file)) |key_raw| {
+            if (unsafeRemovalDecisionFromSingleKey(key_raw)) |decision| {
+                const key = std.ascii.toLower(key_raw);
+                if (key == 'y') {
+                    try stdout.writeAll("y\n");
+                } else if (key == 'n') {
+                    try stdout.writeAll("n\n");
+                } else {
+                    try stdout.writeAll("\n");
+                }
+                return decision;
+            }
+            try stdout.print("{c}\n", .{key_raw});
+            try stdout.writeAll("Please answer y or n.\n");
+            continue;
+        }
+
+        var response_buf: [16]u8 = undefined;
+        const response = try stdin_file.reader().readUntilDelimiterOrEof(&response_buf, '\n');
+        if (response == null) return false;
+
+        if (unsafeRemovalDecisionFromLineInput(response.?)) |decision| return decision;
+        try stdout.writeAll("Please answer yes or no.\n");
+    }
 }
 
 fn removeCandidate(
@@ -594,7 +633,7 @@ fn removeCandidate(
         const target_name = candidate.branch orelse candidate.path;
         const confirmed = confirmUnsafeRemoval(
             stdout,
-            std.io.getStdIn().reader(),
+            std.io.getStdIn(),
             target_name,
             candidate.modified,
             candidate.untracked,
@@ -872,6 +911,27 @@ test "cancel helpers recognize q and control keys" {
     const ctrl_c_text = [_]u8{ctrl_c_key};
     try std.testing.expect(isCancelResponse(&esc_text));
     try std.testing.expect(isCancelResponse(&ctrl_c_text));
+}
+
+test "unsafe removal decision supports immediate cancel and yes/no keys" {
+    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromSingleKey(esc_key));
+    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromSingleKey(ctrl_c_key));
+    try std.testing.expectEqual(@as(?bool, true), unsafeRemovalDecisionFromSingleKey('y'));
+    try std.testing.expectEqual(@as(?bool, true), unsafeRemovalDecisionFromSingleKey('Y'));
+    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromSingleKey('n'));
+    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromSingleKey('\n'));
+    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromSingleKey('\r'));
+}
+
+test "unsafe removal decision line mode supports escaped cancel and defaults" {
+    const esc_text = [_]u8{esc_key};
+    const ctrl_c_text = [_]u8{ctrl_c_key};
+    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromLineInput(&esc_text));
+    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromLineInput(&ctrl_c_text));
+    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromLineInput(""));
+    try std.testing.expectEqual(@as(?bool, true), unsafeRemovalDecisionFromLineInput("yes"));
+    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromLineInput("n"));
+    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromLineInput("cancel"));
 }
 
 test "findWorktreeByBranch matches branch regardless of path naming" {
