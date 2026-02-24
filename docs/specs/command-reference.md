@@ -12,6 +12,7 @@ wt shell-init <shell>
 ```
 
 Supported shells for `shell-init` are `zsh` and `bash`.
+When using `wt shell-init bash`, the emitted shell code also registers a Bash completion function for `wt`.
 
 Use `wt <command> --help` for command details.
 

@@ -94,6 +94,8 @@ Full setup and behavior:
 - `docs/guides/shell-integration.md`
 - `docs/guides/troubleshooting.md`
 
+Note: `wt shell-init bash` also enables Bash tab completion for `wt`.
+
 ## Documentation Map
 
 - Active work-in-progress plans: `plans/README.md`

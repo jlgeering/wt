@@ -58,6 +58,7 @@ source ~/.bashrc
 
 - The wrapper function is intentionally named `wt`, the same as the binary.
 - Inside the function, `command wt` bypasses the function and invokes the real binary.
+- Bash integration also installs tab completion for `wt` (subcommands, common flags, `rm --picker` values, and `shell-init` shell names).
 
 ## Quick verification
 
