@@ -8,11 +8,55 @@ pub const LogMode = enum {
     quiet,
 };
 
+const PathValidationIssue = enum {
+    empty,
+    absolute,
+    traversal,
+};
+
 fn logMessage(level: ui.Level, comptime fmt: []const u8, args: anytype) void {
     const stderr_file = std.fs.File.stderr();
     const stderr = stderr_file.deprecatedWriter();
     const use_color = ui.shouldUseColor(stderr_file);
     ui.printLevel(stderr, use_color, level, fmt, args) catch {};
+}
+
+fn isPathSeparator(char: u8) bool {
+    return char == '/' or char == '\\';
+}
+
+fn hasWindowsDrivePrefix(path: []const u8) bool {
+    return path.len >= 2 and std.ascii.isAlphabetic(path[0]) and path[1] == ':';
+}
+
+fn hasParentTraversalSegment(path: []const u8) bool {
+    var start: usize = 0;
+    while (start <= path.len) {
+        var end = start;
+        while (end < path.len and !isPathSeparator(path[end])) : (end += 1) {}
+
+        if (std.mem.eql(u8, path[start..end], "..")) return true;
+
+        if (end == path.len) break;
+        start = end + 1;
+    }
+    return false;
+}
+
+fn detectUnsafeRelPath(rel_path: []const u8) ?PathValidationIssue {
+    const trimmed = std.mem.trim(u8, rel_path, " \t\r\n");
+    if (trimmed.len == 0) return .empty;
+    if (std.fs.path.isAbsolute(trimmed) or hasWindowsDrivePrefix(trimmed)) return .absolute;
+    if (hasParentTraversalSegment(trimmed)) return .traversal;
+    return null;
+}
+
+fn pathIssueLabel(issue: PathValidationIssue) []const u8 {
+    return switch (issue) {
+        .empty => "empty path",
+        .absolute => "absolute path",
+        .traversal => "parent traversal",
+    };
 }
 
 /// Copy a path from source to target using copy-on-write where available.
@@ -24,6 +68,11 @@ pub fn cowCopy(
     rel_path: []const u8,
     mode: LogMode,
 ) !void {
+    if (detectUnsafeRelPath(rel_path)) |issue| {
+        logMessage(.warn, "skip copy {s}: invalid setup path ({s})", .{ rel_path, pathIssueLabel(issue) });
+        return;
+    }
+
     const source = try std.fs.path.join(allocator, &.{ source_root, rel_path });
     defer allocator.free(source);
     const target = try std.fs.path.join(allocator, &.{ target_root, rel_path });
@@ -94,6 +143,11 @@ pub fn createSymlink(
     rel_path: []const u8,
     mode: LogMode,
 ) !void {
+    if (detectUnsafeRelPath(rel_path)) |issue| {
+        logMessage(.warn, "skip symlink {s}: invalid setup path ({s})", .{ rel_path, pathIssueLabel(issue) });
+        return;
+    }
+
     const source = try std.fs.path.join(allocator, &.{ source_root, rel_path });
     defer allocator.free(source);
     const target = try std.fs.path.join(allocator, &.{ target_root, rel_path });
@@ -188,3 +242,22 @@ pub fn runAllSetup(
 
 // Setup operations are filesystem-heavy; tested via integration tests.
 test "placeholder" {}
+
+test "detectUnsafeRelPath accepts normal relative paths" {
+    try std.testing.expect(detectUnsafeRelPath(".env") == null);
+    try std.testing.expect(detectUnsafeRelPath("config/app.toml") == null);
+    try std.testing.expect(detectUnsafeRelPath("nested\\path\\file.txt") == null);
+}
+
+test "detectUnsafeRelPath rejects empty and traversal paths" {
+    try std.testing.expectEqual(PathValidationIssue.empty, detectUnsafeRelPath(" \t\n").?);
+    try std.testing.expectEqual(PathValidationIssue.traversal, detectUnsafeRelPath("../secret").?);
+    try std.testing.expectEqual(PathValidationIssue.traversal, detectUnsafeRelPath("safe/../../secret").?);
+    try std.testing.expectEqual(PathValidationIssue.traversal, detectUnsafeRelPath("safe\\..\\secret").?);
+}
+
+test "detectUnsafeRelPath rejects absolute paths" {
+    const absolute_sample = if (builtin.os.tag == .windows) "C:\\tmp\\file" else "/tmp/file";
+    try std.testing.expectEqual(PathValidationIssue.absolute, detectUnsafeRelPath(absolute_sample).?);
+    try std.testing.expectEqual(PathValidationIssue.absolute, detectUnsafeRelPath("D:\\data").?);
+}
