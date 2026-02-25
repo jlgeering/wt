@@ -236,7 +236,7 @@ const zsh_init =
     \\            relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
     \\            relative_subdir="${relative_subdir%/}"
     \\            local output
-    \\            output=$(command wt "__new" "${@:2}" 2>/dev/tty)
+    \\            output=$(command wt "__new" "${@:2}")
     \\            local exit_code=$?
     \\            if [ $exit_code -eq 0 ] && [ -n "$output" ] && [ -d "$output" ]; then
     \\                local target_dir="$output"
@@ -342,7 +342,7 @@ const bash_init =
     \\            relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
     \\            relative_subdir="${relative_subdir%/}"
     \\            local output
-    \\            output=$(command wt "__new" "${@:2}" 2>/dev/tty)
+    \\            output=$(command wt "__new" "${@:2}")
     \\            local exit_code=$?
     \\            if [ $exit_code -eq 0 ] && [ -n "$output" ] && [ -d "$output" ]; then
     \\                local target_dir="$output"
@@ -554,7 +554,7 @@ const fish_init =
     \\
     \\            set -l relative_subdir (command git rev-parse --show-prefix 2>/dev/null)
     \\            set relative_subdir (string trim -c / -- "$relative_subdir")
-    \\            set -l output (command wt __new $argv[2..-1] 2>/dev/tty)
+    \\            set -l output (command wt __new $argv[2..-1])
     \\            set -l exit_code $status
     \\            if test $exit_code -eq 0; and test -n "$output"; and test -d "$output"
     \\                set -l target_dir "$output"
@@ -842,6 +842,7 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "for arg in \"${@:2}\"; do") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "[ \"$arg\" = \"--help\" ]") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt \"__new\" \"${@:2}\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "2>/dev/tty") == null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt __pick-worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_report_location()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "printf \"\\nEntered worktree: %s\\n\"") != null);
@@ -865,6 +866,7 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "for arg in \"${@:2}\"; do") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "[ \"$arg\" = \"--help\" ]") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "command wt \"__new\" \"${@:2}\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "2>/dev/tty") == null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "wt __pick-worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_report_location()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "printf \"\\nEntered worktree: %s\\n\"") != null);
@@ -905,6 +907,7 @@ test "fish init contains function definition and completion" {
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "__wt_report_location \"$selected_path\" \"$target_dir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "__wt_report_location \"$output\" \"$target_dir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "git rev-parse --show-prefix") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "2>/dev/tty") == null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "candidate_dir=\"$selected_path/$relative_subdir\"") == null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "set -l candidate_dir \"$selected_path/$relative_subdir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "Subdirectory missing in selected worktree, using root: $selected_path") != null);
