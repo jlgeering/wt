@@ -139,6 +139,10 @@ fn branchDeleteAction(candidate: RemovalCandidate) BranchDeleteAction {
     return .delete;
 }
 
+fn localCommitReference(wt: git.WorktreeInfo) []const u8 {
+    return wt.branch orelse wt.head;
+}
+
 fn isInteractiveSession() bool {
     return std.fs.File.stdin().isTty() and std.fs.File.stdout().isTty();
 }
@@ -535,11 +539,8 @@ fn inspectCandidate(
 
     const status = git.parseStatusPorcelain(status_output);
 
-    var has_local_commits = false;
-    if (wt.branch) |branch| {
-        const unmerged = try git.countUnmergedCommits(allocator, main_path, "HEAD", branch);
-        has_local_commits = unmerged > 0;
-    }
+    const unmerged = try git.countUnmergedCommits(allocator, main_path, "HEAD", localCommitReference(wt));
+    const has_local_commits = unmerged > 0;
 
     const has_dirty = status.modified > 0 or status.untracked > 0;
 
@@ -582,7 +583,7 @@ fn confirmUnsafeRemoval(
         try stdout.print("- dirty worktree: {d} modified, {d} untracked\n", .{ modified, untracked });
     }
     if (has_local_commits) {
-        try stdout.writeAll("- branch has local commits not in main checkout\n");
+        try stdout.writeAll("- worktree has commits not in main checkout\n");
     }
     while (true) {
         try stdout.print("Remove anyway? [y/N]: ", .{});
@@ -886,6 +887,24 @@ test "branchDeleteAction skips detached worktrees" {
 
     try std.testing.expectEqual(BranchDeleteAction.skip_detached, branchDeleteAction(detached));
     try std.testing.expectEqual(BranchDeleteAction.delete, branchDeleteAction(branched));
+}
+
+test "localCommitReference falls back to HEAD for detached worktrees" {
+    const branched: git.WorktreeInfo = .{
+        .path = "/tmp/repo--feat",
+        .head = "abc123",
+        .branch = "feat",
+        .is_bare = false,
+    };
+    const detached: git.WorktreeInfo = .{
+        .path = "/tmp/repo--detached",
+        .head = "def456",
+        .branch = null,
+        .is_bare = false,
+    };
+
+    try std.testing.expectEqualStrings("feat", localCommitReference(branched));
+    try std.testing.expectEqualStrings("def456", localCommitReference(detached));
 }
 
 test "formatCandidateSummary uses dirty and local-commits markers" {
