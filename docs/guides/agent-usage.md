@@ -9,6 +9,10 @@ Recommended pattern:
 - Prefer `mise x -- wt ...` in repos that enforce mise-managed tooling.
 - Keep only durable policy in `AGENTS.md`/`CLAUDE.md`; let CLI help text be the source of truth as `wt` evolves.
 
+For reusable prompt templates and pause/resume workflow phrasing, see:
+
+- [`agent-workflow-prompts.md`](agent-workflow-prompts.md)
+
 Example snippet to place in `AGENTS.md` or `CLAUDE.md`:
 
 ```md

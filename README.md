@@ -130,7 +130,10 @@ mise run clean
 - Decisions (ADRs): `docs/adr/README.md`
 - Shell integration and troubleshooting: `docs/guides/shell-integration.md`, `docs/guides/troubleshooting.md`
 - Maintainer release runbook: `docs/guides/release-process.md`
+- Release/distribution findings: `docs/guides/release-distribution.md`
+- Agent workflows and prompts: `docs/guides/agent-workflow-prompts.md`
 
 ## For Agents
 
-Agent-specific policy lives in `AGENTS.md`.
+- Agent-specific policy and conventions: `AGENTS.md`
+- Prompt cookbook for long sessions and restart handoffs: `docs/guides/agent-workflow-prompts.md`

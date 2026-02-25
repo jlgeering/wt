@@ -7,6 +7,7 @@ Use `guides/` for installation workflows, shell setup, troubleshooting, and rele
 ## Index
 
 - Agent policy guidance: [`agent-usage.md`](agent-usage.md)
+- Agent workflow prompt cookbook: [`agent-workflow-prompts.md`](agent-workflow-prompts.md)
 - Shell integration setup and behavior: [`shell-integration.md`](shell-integration.md)
 - Shell integration testing strategy: [`shell-integration-testing-strategy.md`](shell-integration-testing-strategy.md)
 - Troubleshooting: [`troubleshooting.md`](troubleshooting.md)
