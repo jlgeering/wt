@@ -2,7 +2,11 @@
 
 ## Issue Tracking
 
-Use `br` for task tracking.
+Use `br` for tracking work.
+
+Terminology:
+- `bead`, `task`, and `issue` mean the same thing in this repo.
+- You may also see `ticket` or `work item` used with the same meaning.
 
 Always run direct `br` commands through mise so agents use the mise-managed toolchain instead of global/system binaries:
 
