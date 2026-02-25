@@ -1,5 +1,6 @@
 const std = @import("std");
 const git = @import("../lib/git.zig");
+const column_format = @import("../lib/column_format.zig");
 const ui = @import("../lib/ui.zig");
 
 const OutputMode = enum {
@@ -25,6 +26,12 @@ const WorktreeRow = struct {
     base_divergence: Divergence,
     upstream_divergence: Divergence,
 };
+
+const marker_width: usize = 3;
+const branch_width: usize = 20;
+const wt_width: usize = 8;
+const base_width: usize = 9;
+const upstream_width: usize = 9;
 
 fn shouldUseColor() bool {
     return ui.shouldUseColor(std.fs.File.stdout());
@@ -72,8 +79,18 @@ fn divergenceCountOrMinusOne(divergence: Divergence, field: enum { ahead, behind
 }
 
 fn writeHumanHeader(stdout: anytype) !void {
-    try stdout.writeAll("CUR BRANCH                WT       BASE      UPSTREAM  PATH\n");
-    try stdout.writeAll("--- -------------------- -------- --------- --------- ------------------------------\n");
+    try writeHumanColumns(stdout, "CUR", "BRANCH", "WT", "BASE", "UPSTREAM", "PATH");
+    try stdout.writeByte('\n');
+    try writeHumanColumns(
+        stdout,
+        "---",
+        "--------------------",
+        "--------",
+        "---------",
+        "---------",
+        "------------------------------",
+    );
+    try stdout.writeByte('\n');
 }
 
 fn wtColor(row: WorktreeRow) []const u8 {
@@ -88,9 +105,8 @@ fn divergenceColor(divergence: Divergence) []const u8 {
 }
 
 fn writeHumanRow(stdout: anytype, row: WorktreeRow, use_color: bool) !void {
-    const marker: []const u8 = if (row.is_current) "*" else " ";
+    const marker: []const u8 = if (row.is_current) "*" else "";
 
-    var wt_buf: [16]u8 = undefined;
     var base_buf: [32]u8 = undefined;
     var upstream_buf: [32]u8 = undefined;
     const wt = wtStateLabel(row);
@@ -98,24 +114,58 @@ fn writeHumanRow(stdout: anytype, row: WorktreeRow, use_color: bool) !void {
     const upstream = divergenceLabel(row.upstream_divergence, &upstream_buf);
 
     if (!use_color) {
-        try stdout.print(
-            "{s}   {s:<20} {s:<8} {s:<9} {s:<9} {s}\n",
-            .{ marker, row.branch_name, wt, base, upstream, row.path },
-        );
+        try writeHumanColumns(stdout, marker, row.branch_name, wt, base, upstream, row.path);
+        try stdout.writeByte('\n');
         return;
     }
 
-    const wt_cell = std.fmt.bufPrint(&wt_buf, "{s:<8}", .{wt}) catch wt;
-    var base_cell_buf: [48]u8 = undefined;
-    const base_cell = std.fmt.bufPrint(&base_cell_buf, "{s:<9}", .{base}) catch base;
-    var upstream_cell_buf: [48]u8 = undefined;
-    const upstream_cell = std.fmt.bufPrint(&upstream_cell_buf, "{s:<9}", .{upstream}) catch upstream;
+    var wt_buf: [64]u8 = undefined;
+    const wt_colored = std.fmt.bufPrint(&wt_buf, "{s}{s}{s}", .{ wtColor(row), wt, ui.ansi.reset }) catch wt;
+    var base_colored_buf: [80]u8 = undefined;
+    const base_colored = std.fmt.bufPrint(&base_colored_buf, "{s}{s}{s}", .{
+        divergenceColor(row.base_divergence),
+        base,
+        ui.ansi.reset,
+    }) catch base;
+    var upstream_colored_buf: [80]u8 = undefined;
+    const upstream_colored = std.fmt.bufPrint(&upstream_colored_buf, "{s}{s}{s}", .{
+        divergenceColor(row.upstream_divergence),
+        upstream,
+        ui.ansi.reset,
+    }) catch upstream;
 
-    try stdout.print("{s}   {s:<20} ", .{ marker, row.branch_name });
-    try stdout.print("{s}{s}{s} ", .{ wtColor(row), wt_cell, ui.ansi.reset });
-    try stdout.print("{s}{s}{s} ", .{ divergenceColor(row.base_divergence), base_cell, ui.ansi.reset });
-    try stdout.print("{s}{s}{s} ", .{ divergenceColor(row.upstream_divergence), upstream_cell, ui.ansi.reset });
-    try stdout.print("{s}\n", .{row.path});
+    try writeHumanColumns(
+        stdout,
+        marker,
+        row.branch_name,
+        wt_colored,
+        base_colored,
+        upstream_colored,
+        row.path,
+    );
+    try stdout.writeByte('\n');
+}
+
+fn writeHumanColumns(
+    writer: anytype,
+    marker: []const u8,
+    branch: []const u8,
+    wt: []const u8,
+    base: []const u8,
+    upstream: []const u8,
+    path: []const u8,
+) !void {
+    try column_format.writePadded(writer, marker, marker_width);
+    try writer.writeAll(" ");
+    try column_format.writePadded(writer, branch, branch_width);
+    try writer.writeAll(" ");
+    try column_format.writePadded(writer, wt, wt_width);
+    try writer.writeAll(" ");
+    try column_format.writePadded(writer, base, base_width);
+    try writer.writeAll(" ");
+    try column_format.writePadded(writer, upstream, upstream_width);
+    try writer.writeAll(" ");
+    try writer.writeAll(path);
 }
 
 fn writeMachineRow(stdout: anytype, row: WorktreeRow) !void {
@@ -368,4 +418,59 @@ test "writeHumanRow uses dirty label and unavailable divergence marker" {
     try std.testing.expect(std.mem.indexOf(u8, out, "dirty") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "\xE2\x86\x931") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, " - ") != null);
+}
+
+test "writeHumanRow keeps PATH column aligned with unicode upstream" {
+    var header_buf: [256]u8 = undefined;
+    var header_fbs = std.io.fixedBufferStream(&header_buf);
+    try writeHumanHeader(header_fbs.writer());
+    const header = header_fbs.getWritten();
+
+    var row_buf: [256]u8 = undefined;
+    var row_fbs = std.io.fixedBufferStream(&row_buf);
+    const row: WorktreeRow = .{
+        .is_current = true,
+        .branch_name = "main",
+        .path = "/tmp/repo",
+        .wt_known = true,
+        .tracked_changes = 1,
+        .untracked = 0,
+        .base_ref = "main",
+        .base_divergence = .{ .known = true, .available = true, .ahead = 0, .behind = 0 },
+        .upstream_divergence = .{ .known = true, .available = true, .ahead = 12, .behind = 3 },
+    };
+    try writeHumanRow(row_fbs.writer(), row, false);
+    const rendered_row = row_fbs.getWritten();
+
+    try std.testing.expectEqual(columnStartWidth(header, "PATH"), columnStartWidth(rendered_row, "/tmp/repo"));
+}
+
+test "writeHumanRow keeps PATH column aligned with unicode upstream in color mode" {
+    var header_buf: [256]u8 = undefined;
+    var header_fbs = std.io.fixedBufferStream(&header_buf);
+    try writeHumanHeader(header_fbs.writer());
+    const header = header_fbs.getWritten();
+
+    var row_buf: [512]u8 = undefined;
+    var row_fbs = std.io.fixedBufferStream(&row_buf);
+    const row: WorktreeRow = .{
+        .is_current = true,
+        .branch_name = "main",
+        .path = "/tmp/repo",
+        .wt_known = true,
+        .tracked_changes = 1,
+        .untracked = 0,
+        .base_ref = "main",
+        .base_divergence = .{ .known = true, .available = true, .ahead = 0, .behind = 0 },
+        .upstream_divergence = .{ .known = true, .available = true, .ahead = 12, .behind = 3 },
+    };
+    try writeHumanRow(row_fbs.writer(), row, true);
+    const rendered_row = row_fbs.getWritten();
+
+    try std.testing.expectEqual(columnStartWidth(header, "PATH"), columnStartWidth(rendered_row, "/tmp/repo"));
+}
+
+fn columnStartWidth(line: []const u8, token: []const u8) usize {
+    const idx = std.mem.indexOf(u8, line, token) orelse unreachable;
+    return column_format.visibleWidth(line[0..idx]);
 }
