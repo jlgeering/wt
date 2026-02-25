@@ -22,7 +22,7 @@ When loaded via `wt shell-init zsh`, `wt` also registers zsh completion for:
 - positionals:
   - `wt new|add <branch> [base]`: git refs
   - `wt rm [branch]`: branch names from `wt __list` (excluding current worktree branch)
-  - `wt shell-init <shell>`: `zsh`, `bash`, `fish`
+  - `wt shell-init <shell>`: `zsh`, `bash`, `fish`, `nu`, `nushell`
 
 Completion intentionally does not suggest flags.
 
@@ -64,7 +64,7 @@ When loaded via `wt shell-init fish`, `wt` also registers fish completion for:
 - positionals:
   - `wt new|add <branch> [base]`: git refs
   - `wt rm [branch]`: branch names from `wt __list` (excluding current worktree branch)
-  - `wt shell-init <shell>`: `zsh`, `bash`, `fish`
+  - `wt shell-init <shell>`: `zsh`, `bash`, `fish`, `nu`, `nushell`
 
 Completion intentionally does not suggest flags.
 
