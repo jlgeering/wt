@@ -13,22 +13,19 @@ It helps you create, list, and remove worktrees with consistent naming and optio
 - `git` on `PATH`
 - [`mise`](https://mise.jdx.dev/) on `PATH`
 
-`mise` installs and pins Zig from `mise.toml`.
-
 ## Install (Recommended)
 
 ```bash
-git clone <repo-url> wt
-cd wt
-mise install
-mise run install
-wt --help
+mise use -g github:jlgeering/wt@latest
+wt --version
 ```
 
-Ensure `~/.local/bin` is on your `PATH`:
+## Install (Project-Local Pin)
 
 ```bash
-export PATH="$HOME/.local/bin:$PATH"
+mise use github:jlgeering/wt@latest
+mise install
+wt --version
 ```
 
 ## Quick Start
@@ -95,6 +92,18 @@ Detailed command contracts and output schemas:
 - New worktree path for branch `feat-x`: `/path/to/repo--feat-x`
 - Branch names with `/` are percent-encoded to keep paths flat: `feat/auth` -> `/path/to/repo--feat%2Fauth`
 
+## Development Install (From Source)
+
+Use this path if you are contributing to `wt` itself:
+
+```bash
+git clone <repo-url> wt
+cd wt
+mise install
+mise run install
+wt --version
+```
+
 ## Contributor Workflow
 
 Use `mise` tasks for local development:
@@ -120,7 +129,7 @@ mise run clean
 - Guides (how-to/runbooks): `docs/guides/README.md`
 - Decisions (ADRs): `docs/adr/README.md`
 - Shell integration and troubleshooting: `docs/guides/shell-integration.md`, `docs/guides/troubleshooting.md`
-- Release/distribution findings: `docs/guides/release-distribution.md`
+- Maintainer release runbook: `docs/guides/release-process.md`
 
 ## For Agents
 

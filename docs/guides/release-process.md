@@ -1,70 +1,77 @@
 # Release Process Runbook
 
-This runbook defines how to cut and publish a `wt` release on GitHub.
+This is the canonical process for publishing `wt` releases.
 
-First release recommendation: `v0.1.0` (matches current `build.zig.zon`).
+## Release contract
 
-## Versioning rules
+- Version format: `X.Y.Z` (SemVer)
+- Tag format: `vX.Y.Z`
+- Canonical release notes source: matching section in `CHANGELOG.md`
+- Required GitHub release assets:
+  - `wt-vX.Y.Z-darwin-arm64.tar.gz`
+  - `wt-vX.Y.Z-darwin-amd64.tar.gz`
+  - `wt-vX.Y.Z-linux-arm64.tar.gz`
+  - `wt-vX.Y.Z-linux-amd64.tar.gz`
+  - `wt-vX.Y.Z-windows-amd64.zip`
+  - `SHA256SUMS`
 
-- Use Semantic Versioning with tag format `vX.Y.Z`.
-- Keep embedded app version as `X.Y.Z` (no leading `v`).
-- Pre-1.0 (`0.y.z`) policy:
-  - Patch (`z`): bug fixes and low-risk internal changes with no intended behavior change.
-  - Minor (`y`): any user-visible behavior/output/flag change, including breaking changes.
+This contract is chosen so users can install via `mise` `github:jlgeering/wt` without custom matching rules.
 
 ## Prerequisites
 
-- GitHub CLI authenticated (`mise x -- gh auth status`).
-- Clean working tree on `main`.
-- CI/checks pass locally:
-  - `mise install`
+- On `main` with a clean working tree
+- `CHANGELOG.md` includes `## [X.Y.Z] - YYYY-MM-DD`
+- `build.zig.zon` and `build.zig` fallback version both set to `X.Y.Z`
+- GitHub CLI authenticated: `mise x -- gh auth status`
+- Local validation passes:
   - `mise run check`
   - `mise run build:all`
 
-## Release checklist (`vX.Y.Z`)
-
-1. Confirm version and changelog:
-   - Decide target version (`X.Y.Z`) for the first public release.
-   - `build.zig.zon` has `.version = "X.Y.Z"`.
-   - `CHANGELOG.md` includes an `X.Y.Z` section with release notes.
-2. Ensure release notes are finalized (use changelog content as source of truth).
-3. Create and push annotated tag:
+## Canonical command
 
 ```bash
-VERSION=0.1.0 # replace if first-release version decision differs
-
-git checkout main
-git pull --ff-only github main
-git tag -a "v$VERSION" -m "wt v$VERSION"
-git push github "v$VERSION"
+mise run release -- <X.Y.Z>
 ```
 
-4. Create GitHub release (first pass can be notes-only until release automation lands):
+Example:
 
 ```bash
-VERSION=0.1.0 # replace if first-release version decision differs
-
-mise x -- gh release create "v$VERSION" \
-  --verify-tag \
-  --title "wt v$VERSION" \
-  --notes-file CHANGELOG.md
+mise run release -- 0.1.1
 ```
 
-5. Verify the release page:
-   - Tag is `vX.Y.Z`.
-   - Release notes render correctly.
-   - Marked as latest (default behavior for first stable release).
+## What the release script does
 
-## Artifact publishing (when pipeline is ready)
+`scripts/release.sh` performs the full flow:
 
-`wt-2fw` tracks the release artifact pipeline. When implemented, release should also:
+1. Validates release preconditions:
+   - clean git tree on `main`
+   - semver input
+   - no existing `vX.Y.Z` tag (local or remote)
+   - version consistency across files
+   - changelog section exists for `X.Y.Z`
+2. Runs preflight checks (`mise run check`).
+3. Builds all target binaries with `-Dapp_version=X.Y.Z`.
+4. Packages artifacts with stable names and generates `SHA256SUMS`.
+5. Pushes `main`, creates/pushes annotated tag `vX.Y.Z`.
+6. Creates a **draft** GitHub release with changelog-derived notes and assets.
+7. Verifies draft state, asset count, and notes body.
+8. Publishes (`--draft=false`) and marks as latest.
+9. Verifies `vX.Y.Z` is the latest GitHub release.
 
-- Build macOS (`aarch64`, `x86_64`), Linux (`aarch64`, `x86_64`), Windows (`x86_64`).
-- Pass `-Dapp_version=X.Y.Z` to release builds.
-- Upload archives and `SHA256SUMS` to the GitHub release.
-- Verify `wt --version` from artifacts reports `wt X.Y.Z (<sha>)`.
+## Draft verification checklist
+
+Before publish, verify the draft release has:
+
+- Correct tag (`vX.Y.Z`)
+- Exactly six required assets (5 archives + `SHA256SUMS`)
+- Non-empty changelog-derived notes
+
+After publish, verify:
+
+- Release is not draft/prerelease
+- Latest release endpoint resolves to `vX.Y.Z`
 
 ## Do nots
 
 - Do not retag or mutate an existing published version.
-- If a release needs correction, publish the next version (for example `v0.1.1`).
+- If a release needs correction, publish the next patch version (for example `v0.1.2`).

@@ -52,6 +52,10 @@ zig build -Dtarget=aarch64-linux -Doptimize=ReleaseSafe -p dist/aarch64-linux
 description = "Run tests and build (pre-commit check)"
 depends = ["test", "build"]
 
+[tasks.release]
+description = "Cut and publish a release (usage: mise run release -- <X.Y.Z>)"
+run = "scripts/release.sh {{arg(rest=true)}}"
+
 [tasks.clean]
 description = "Remove build artifacts"
 run = "rm -rf zig-out/ .zig-cache/ dist/"

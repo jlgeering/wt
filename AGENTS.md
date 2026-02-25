@@ -29,3 +29,7 @@ We use mise for tool versions, task execution, and environment setup.
 ## ADRs
 
 Propose a new ADR in `docs/adr` for meaningful user-facing behavior/default changes, cross-platform tradeoffs, or policy decisions.
+
+## Release Process
+
+Canonical release process: `docs/guides/release-process.md`.

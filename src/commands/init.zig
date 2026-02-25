@@ -44,7 +44,7 @@ fn printScreenBreak(stdout: anytype) !void {
 }
 
 fn tryReadSingleKey(stdin_file: std.fs.File) !?u8 {
-    if (builtin.os.tag == .windows) return null;
+    if (builtin.target.os.tag == .windows) return null;
     if (!stdin_file.isTty()) return null;
 
     const original_termios = std.posix.tcgetattr(stdin_file.handle) catch return null;

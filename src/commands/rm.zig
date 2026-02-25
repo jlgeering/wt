@@ -144,13 +144,14 @@ fn isInteractiveSession() bool {
 }
 
 fn isSingleKeySupported(stdin_file: std.fs.File) bool {
-    if (builtin.os.tag == .windows) return false;
+    if (builtin.target.os.tag == .windows) return false;
     if (!stdin_file.isTty()) return false;
     _ = std.posix.tcgetattr(stdin_file.handle) catch return false;
     return true;
 }
 
 fn tryReadSingleKey(stdin_file: std.fs.File) !?u8 {
+    if (builtin.target.os.tag == .windows) return null;
     if (!isSingleKeySupported(stdin_file)) return null;
 
     const original_termios = std.posix.tcgetattr(stdin_file.handle) catch return null;
