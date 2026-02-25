@@ -53,6 +53,7 @@ fn tryReadSingleKey(stdin_file: std.fs.File) !?u8 {
         var raw_termios = original_termios;
         raw_termios.lflag.ICANON = false;
         raw_termios.lflag.ECHO = false;
+        raw_termios.lflag.ISIG = false;
         raw_termios.cc[@intFromEnum(std.c.V.MIN)] = 1;
         raw_termios.cc[@intFromEnum(std.c.V.TIME)] = 0;
         std.posix.tcsetattr(stdin_file.handle, .NOW, raw_termios) catch return null;
