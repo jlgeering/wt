@@ -10,3 +10,4 @@ Use `guides/` for installation workflows, shell setup, troubleshooting, and rele
 - Shell integration setup and behavior: [`shell-integration.md`](shell-integration.md)
 - Troubleshooting: [`troubleshooting.md`](troubleshooting.md)
 - Release and distribution findings: [`release-distribution.md`](release-distribution.md)
+- Release process runbook: [`release-process.md`](release-process.md)
