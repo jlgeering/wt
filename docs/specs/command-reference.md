@@ -3,7 +3,7 @@
 ## Core command usage
 
 ```bash
-wt list
+wt list|ls  # ls is an alias of list
 wt new|add <branch> [base]  # add is an alias of new
 wt rm [branch] [-f|--force] [--picker auto|builtin|fzf] [--no-interactive]
 wt init
@@ -30,7 +30,7 @@ When users load `wt shell-init bash` (via `eval`), `wt` registers Bash completio
 
 When users load `wt shell-init zsh` (via `eval`), `wt shell-init fish` (via `source`), or `wt shell-init nu` (via `source`), `wt` registers completion for:
 
-- subcommands (`list`, `new`, `add`, `rm`, `init`, `shell-init`)
+- subcommands (`list`, `ls`, `new`, `add`, `rm`, `init`, `shell-init`)
 - positional arguments for `new|add`, `rm`, and `shell-init`
 
 zsh/fish/nu completion intentionally does not suggest flags.

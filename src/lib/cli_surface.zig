@@ -22,6 +22,7 @@ pub const completion_commands = [_]CommandSpec{
     .{
         .name = "list",
         .description = "List worktrees",
+        .aliases = &.{"ls"},
     },
     .{
         .name = "new",
@@ -73,6 +74,10 @@ test "commandForName resolves aliases" {
     const new_cmd = commandForName("new");
     try std.testing.expect(new_cmd != null);
     try std.testing.expectEqualStrings("new", new_cmd.?.name);
+
+    const list_alias = commandForName("ls");
+    try std.testing.expect(list_alias != null);
+    try std.testing.expectEqualStrings("list", list_alias.?.name);
 
     const add_alias = commandForName("add");
     try std.testing.expect(add_alias != null);

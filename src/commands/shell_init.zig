@@ -391,7 +391,7 @@ const bash_init =
     \\    fi
     \\
     \\    if [ "$COMP_CWORD" -eq 1 ]; then
-    \\        COMPREPLY=($(compgen -W "list new add rm init shell-init --help -h --version -V" -- "$cur"))
+    \\        COMPREPLY=($(compgen -W "list ls new add rm init shell-init --help -h --version -V" -- "$cur"))
     \\        return 0
     \\    fi
     \\
@@ -818,6 +818,7 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "_wt()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compdef _wt wt") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'list:List worktrees'") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'ls:Alias for list'") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'new:Create a new worktree'") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'add:Alias for new'") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'rm:Remove a worktree'") != null);
@@ -880,7 +881,7 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_worktree_branches()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "command wt __list") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "_wt_bash_completion()") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"list new add rm init shell-init --help -h --version -V\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"list ls new add rm init shell-init --help -h --version -V\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "--porcelain") == null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"auto builtin fzf\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"zsh bash fish nu\"") != null);
@@ -894,6 +895,7 @@ test "fish init contains function definition and completion" {
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -e -c wt") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"list\" -d \"List worktrees\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"ls\" -d \"Alias for list\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"add\" -d \"Alias for new\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_seen_subcommand_from new add; and test (count (commandline -opc)) -eq 2\" -a \"(__wt_complete_local_branches)\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_seen_subcommand_from shell-init; and test (count (commandline -opc)) -eq 2\" -a \"zsh bash fish nu\"") != null);
@@ -918,6 +920,7 @@ test "nu init contains wrapper and completion definitions" {
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def --env --wrapped wt [...args]") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"nu-complete wt\" [spans: list<string>]") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"nu-complete wt commands\" []") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "{ value: \"ls\", description: \"Alias for list\" }") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "{ value: \"new\", description: \"Create a new worktree\" }") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "{ value: \"add\", description: \"Alias for new\" }") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_local_branches\" []") != null);

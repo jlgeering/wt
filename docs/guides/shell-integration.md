@@ -18,7 +18,7 @@ source ~/.zshrc
 
 When loaded via `wt shell-init zsh`, `wt` also registers zsh completion for:
 
-- subcommands (`list`, `new`, `add`, `rm`, `init`, `shell-init`)
+- subcommands (`list`, `ls`, `new`, `add`, `rm`, `init`, `shell-init`)
 - positionals:
   - `wt new|add <branch> [base]`: git refs
   - `wt rm [branch]`: branch names from `wt __list` (excluding current worktree branch)
@@ -60,7 +60,7 @@ source ~/.config/fish/config.fish
 
 When loaded via `wt shell-init fish`, `wt` also registers fish completion for:
 
-- subcommands (`list`, `new`, `add`, `rm`, `init`, `shell-init`)
+- subcommands (`list`, `ls`, `new`, `add`, `rm`, `init`, `shell-init`)
 - positionals:
   - `wt new|add <branch> [base]`: git refs
   - `wt rm [branch]`: branch names from `wt __list` (excluding current worktree branch)

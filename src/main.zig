@@ -17,7 +17,7 @@ const root_help_text =
     "\n\n" ++
     "Usage: wt [OPTIONS] [COMMAND]\n\n" ++
     "Commands:\n" ++
-    "    list                                          List worktrees (WT, BASE, UPSTREAM)\n" ++
+    "    list                                          List worktrees (WT, BASE, UPSTREAM) (alias: ls)\n" ++
     "    new                                           Create a new worktree (alias: add)\n" ++
     "    rm                                            Remove a worktree (picker status: clean|dirty plus optional local-commits)\n" ++
     "    init                                          Create or upgrade .wt.toml with guided recommendations\n\n" ++
@@ -73,7 +73,8 @@ fn buildRootCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: s
 fn buildListCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
     const cmd = try zli.Command.init(writer, reader, allocator, .{
         .name = "list",
-        .description = "List worktrees (WT, BASE, UPSTREAM)",
+        .description = "List worktrees (WT, BASE, UPSTREAM) (alias: ls)",
+        .aliases = &.{"ls"},
     }, runList);
 
     return cmd;

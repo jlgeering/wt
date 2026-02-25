@@ -75,7 +75,7 @@ if (which wt | is-not-empty) {
 ## Core Commands
 
 ```bash
-wt list
+wt list|ls
 wt new|add <branch> [base]
 wt rm [branch] [-f|--force] [--picker auto|builtin|fzf] [--no-interactive]
 wt init
