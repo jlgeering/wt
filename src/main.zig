@@ -17,7 +17,7 @@ const root_help_text =
     "\n\n" ++
     "Usage: wt [OPTIONS] [COMMAND]\n\n" ++
     "Commands:\n" ++
-    "    list                                          List worktrees (WT, BASE, UPSTREAM); use --porcelain for machine output\n" ++
+    "    list                                          List worktrees (WT, BASE, UPSTREAM)\n" ++
     "    new                                           Create a new worktree (alias: add)\n" ++
     "    rm                                            Remove a worktree (picker status: clean|dirty plus optional local-commits)\n" ++
     "    init                                          Create or upgrade .wt.toml with guided recommendations\n\n" ++
@@ -59,6 +59,8 @@ fn buildRootCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: s
     try root.addCommands(&.{
         try buildListCommand(writer, reader, allocator),
         try buildNewCommand(writer, reader, allocator),
+        try buildInternalListCommand(writer, reader, allocator),
+        try buildInternalNewCommand(writer, reader, allocator),
         try buildRmCommand(writer, reader, allocator),
         try buildInitCommand(writer, reader, allocator),
         try buildShellInitCommand(writer, reader, allocator),
@@ -71,16 +73,9 @@ fn buildRootCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: s
 fn buildListCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
     const cmd = try zli.Command.init(writer, reader, allocator, .{
         .name = "list",
-        .description = "List worktrees (WT, BASE, UPSTREAM); use --porcelain for machine output",
+        .description = "List worktrees (WT, BASE, UPSTREAM)",
     }, runList);
 
-    try cmd.addFlag(.{
-        .name = "porcelain",
-        .description = "Print machine-readable output only",
-        .type = .Bool,
-        .default_value = .{ .Bool = false },
-        .hidden = true,
-    });
     return cmd;
 }
 
@@ -91,13 +86,34 @@ fn buildNewCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: st
         .aliases = &.{"add"},
     }, runNew);
 
-    try cmd.addFlag(.{
-        .name = "porcelain",
-        .description = "Print machine-readable output only",
-        .type = .Bool,
-        .default_value = .{ .Bool = false },
-        .hidden = true,
+    try cmd.addPositionalArg(.{
+        .name = "BRANCH",
+        .description = "Branch name",
+        .required = false,
     });
+    try cmd.addPositionalArg(.{
+        .name = "BASE",
+        .description = "Base ref (default: HEAD)",
+        .required = false,
+    });
+    return cmd;
+}
+
+fn buildInternalListCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    return zli.Command.init(writer, reader, allocator, .{
+        .name = "__list",
+        .description = "Internal: machine-readable worktree list",
+        .section_title = "Internal",
+    }, runInternalList);
+}
+
+fn buildInternalNewCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(writer, reader, allocator, .{
+        .name = "__new",
+        .description = "Internal: machine-readable worktree create",
+        .section_title = "Internal",
+    }, runInternalNew);
+
     try cmd.addPositionalArg(.{
         .name = "BRANCH",
         .description = "Branch name",
@@ -192,7 +208,11 @@ fn runRoot(ctx: zli.CommandContext) !void {
 }
 
 fn runList(ctx: zli.CommandContext) !void {
-    try list_cmd.run(ctx.allocator, ctx.flag("porcelain", bool));
+    try list_cmd.runHuman(ctx.allocator);
+}
+
+fn runInternalList(ctx: zli.CommandContext) !void {
+    try list_cmd.runMachine(ctx.allocator);
 }
 
 fn runNew(ctx: zli.CommandContext) !void {
@@ -204,7 +224,19 @@ fn runNew(ctx: zli.CommandContext) !void {
     };
     const base = ctx.getArg("BASE") orelse "HEAD";
 
-    try new_cmd.run(ctx.allocator, branch, base, ctx.flag("porcelain", bool));
+    try new_cmd.runHuman(ctx.allocator, branch, base);
+}
+
+fn runInternalNew(ctx: zli.CommandContext) !void {
+    const branch = ctx.getArg("BRANCH") orelse {
+        const stderr = std.fs.File.stderr().deprecatedWriter();
+        const use_color = ui.shouldUseColor(std.fs.File.stderr());
+        try ui.printLevel(stderr, use_color, .err, "branch name required", .{});
+        std.process.exit(1);
+    };
+    const base = ctx.getArg("BASE") orelse "HEAD";
+
+    try new_cmd.runMachine(ctx.allocator, branch, base);
 }
 
 fn runRm(ctx: zli.CommandContext) !void {

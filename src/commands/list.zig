@@ -2,6 +2,11 @@ const std = @import("std");
 const git = @import("../lib/git.zig");
 const ui = @import("../lib/ui.zig");
 
+const OutputMode = enum {
+    human,
+    machine,
+};
+
 const Divergence = struct {
     known: bool,
     available: bool,
@@ -113,7 +118,7 @@ fn writeHumanRow(stdout: anytype, row: WorktreeRow, use_color: bool) !void {
     try stdout.print("{s}\n", .{row.path});
 }
 
-fn writePorcelainRow(stdout: anytype, row: WorktreeRow) !void {
+fn writeMachineRow(stdout: anytype, row: WorktreeRow) !void {
     const current: usize = if (row.is_current) 1 else 0;
     const has_upstream: usize = if (row.upstream_divergence.known and row.upstream_divergence.available) 1 else 0;
     try stdout.print(
@@ -233,7 +238,7 @@ fn inspectWorktree(
     };
 }
 
-pub fn run(allocator: std.mem.Allocator, porcelain: bool) !void {
+fn runWithMode(allocator: std.mem.Allocator, mode: OutputMode) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
     const stderr = std.fs.File.stderr().deprecatedWriter();
     const use_stderr_color = ui.shouldUseColor(std.fs.File.stderr());
@@ -258,22 +263,30 @@ pub fn run(allocator: std.mem.Allocator, porcelain: bool) !void {
 
     const base_branch = worktrees[0].branch;
 
-    if (!porcelain) {
+    if (mode == .human) {
         try stdout.writeAll("\n");
         try writeHumanHeader(stdout);
     }
 
     for (worktrees) |wt| {
         const row = inspectWorktree(allocator, cwd, wt, base_branch);
-        if (porcelain) {
-            try writePorcelainRow(stdout, row);
+        if (mode == .machine) {
+            try writeMachineRow(stdout, row);
         } else {
             try writeHumanRow(stdout, row, use_color);
         }
     }
 }
 
-test "writePorcelainRow uses tab-separated schema with base and upstream divergence" {
+pub fn runHuman(allocator: std.mem.Allocator) !void {
+    try runWithMode(allocator, .human);
+}
+
+pub fn runMachine(allocator: std.mem.Allocator) !void {
+    try runWithMode(allocator, .machine);
+}
+
+test "writeMachineRow uses tab-separated schema with base and upstream divergence" {
     var out_buf: [256]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&out_buf);
 
@@ -288,7 +301,7 @@ test "writePorcelainRow uses tab-separated schema with base and upstream diverge
         .base_divergence = .{ .known = true, .available = true, .ahead = 4, .behind = 1 },
         .upstream_divergence = .{ .known = true, .available = true, .ahead = 3, .behind = 0 },
     };
-    try writePorcelainRow(fbs.writer(), row);
+    try writeMachineRow(fbs.writer(), row);
 
     try std.testing.expectEqualStrings(
         "1\tfeat-x\t/tmp/repo--feat-x\tdirty\t2\t1\tmain\t4\t1\t1\t3\t0\n",

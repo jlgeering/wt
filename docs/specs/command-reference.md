@@ -3,8 +3,8 @@
 ## Core command usage
 
 ```bash
-wt list [--porcelain]
-wt new|add [--porcelain] <branch> [base]  # add is an alias of new
+wt list
+wt new|add <branch> [base]  # add is an alias of new
 wt rm [branch] [-f|--force] [--picker auto|builtin|fzf] [--no-interactive]
 wt init
 wt --version
@@ -15,6 +15,14 @@ Supported shells for `shell-init` are `zsh`, `bash`, `fish`, and `nu` (alias: `n
 When using `wt shell-init bash`, the emitted shell code also registers a Bash completion function for `wt`.
 
 Use `wt <command> --help` for command details.
+
+Internal commands reserved for shell wrappers:
+
+```bash
+wt __list
+wt __new <branch> [base]
+wt __pick-worktree
+```
 
 ## Completion via shell-init
 
@@ -39,16 +47,16 @@ zsh/fish/nu completion intentionally does not suggest flags.
   - use `wt list` to inspect worktrees
   - then remove with `wt rm <branch>`
 
-## `wt new` output modes
+## `wt new` output contracts
 
-- Default mode (human): prints status messages to stderr and does not print the raw path on stdout.
-- `--porcelain` mode (machine): prints exactly the worktree path to stdout.
+- Public command `wt new|add` (human): prints status messages to stderr and does not print the raw path on stdout.
+- Internal command `wt __new <branch> [base]` (machine): prints exactly the worktree path to stdout.
 
-## `wt list` output modes
+## `wt list` output contracts
 
-- Default mode (human): table with explicit columns:
+- Public command `wt list` (human): table with explicit columns:
   `CUR BRANCH WT BASE UPSTREAM PATH`
-- `--porcelain` mode (machine): tab-separated fields per line:
+- Internal command `wt __list` (machine): tab-separated fields per line:
   `current\tbranch\tpath\twt\ttracked_changes\tuntracked\tbase_ref\tbase_ahead\tbase_behind\thas_upstream\tupstream_ahead\tupstream_behind`
 
 Column semantics (human):
@@ -69,7 +77,7 @@ Example (`wt list` human output row with divergences):
 *   feat-x               dirty    ↑2      ↓1      /Users/jlg/src/wt--feat-x
 ```
 
-Porcelain field semantics:
+Machine field semantics:
 
 - `wt`: `clean`, `dirty`, or `unknown`.
 - `tracked_changes`: tracked status-entry count (modified/deleted/renamed/etc).
@@ -82,4 +90,4 @@ Porcelain field semantics:
 Related picker semantics:
 
 - `wt rm` picker rows show `clean`/`dirty` and optional `local-commits` (no count).
-- shell integration (`wt` with no args after `wt shell-init`) consumes `wt list --porcelain` and displays `WT`, `BASE`, and `UPSTREAM` columns.
+- shell integration (`wt` with no args after `wt shell-init`) consumes `wt __list` and displays `WT`, `BASE`, and `UPSTREAM` columns.

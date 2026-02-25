@@ -5,18 +5,16 @@ const config = @import("../lib/config.zig");
 const setup = @import("../lib/setup.zig");
 const ui = @import("../lib/ui.zig");
 
-fn shouldPrintPathToStdout(porcelain: bool) bool {
-    return porcelain;
-}
+const OutputMode = enum {
+    human,
+    machine,
+};
 
-fn shouldPrintHumanStatus(porcelain: bool) bool {
-    return !porcelain;
-}
-
-pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, porcelain: bool) !void {
+fn runWithMode(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, mode: OutputMode) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
     const stderr = std.fs.File.stderr().deprecatedWriter();
     const use_color = ui.shouldUseColor(std.fs.File.stderr());
+    const is_machine = mode == .machine;
 
     // Find main worktree (first in list)
     const wt_output = git.runGit(allocator, null, &.{ "worktree", "list", "--porcelain" }) catch {
@@ -39,10 +37,10 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, p
 
     // Check if worktree already exists
     if (std.fs.cwd().access(wt_path, .{})) |_| {
-        if (shouldPrintHumanStatus(porcelain)) {
+        if (!is_machine) {
             try ui.printLevel(stderr, use_color, .warn, "worktree already exists at {s}", .{wt_path});
         }
-        if (shouldPrintPathToStdout(porcelain)) {
+        if (is_machine) {
             try stdout.print("{s}\n", .{wt_path});
         }
         return;
@@ -71,7 +69,7 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, p
             }
         }
 
-        if (shouldPrintHumanStatus(porcelain)) {
+        if (!is_machine) {
             try ui.printLevel(stderr, use_color, .info, "using existing branch '{s}'", .{branch});
         }
         const add_result = git.runGit(allocator, null, &.{ "worktree", "add", wt_path, branch }) catch {
@@ -87,7 +85,7 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, p
         allocator.free(add_result);
     }
 
-    if (shouldPrintHumanStatus(porcelain)) {
+    if (!is_machine) {
         try ui.printLevel(stderr, use_color, .success, "created worktree at {s}", .{wt_path});
     }
 
@@ -95,21 +93,18 @@ pub fn run(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, p
     var cfg = try config.loadConfigFile(allocator, main_path);
     defer cfg.deinit();
 
-    const log_mode: setup.LogMode = if (porcelain) .quiet else .human;
+    const log_mode: setup.LogMode = if (is_machine) .quiet else .human;
     try setup.runAllSetup(allocator, cfg.value, main_path, wt_path, log_mode);
 
-    // Print path to stdout for machine mode.
-    if (shouldPrintPathToStdout(porcelain)) {
+    if (is_machine) {
         try stdout.print("{s}\n", .{wt_path});
     }
 }
 
-test "human mode emits status not machine path" {
-    try std.testing.expect(shouldPrintHumanStatus(false));
-    try std.testing.expect(!shouldPrintPathToStdout(false));
+pub fn runHuman(allocator: std.mem.Allocator, branch: []const u8, base: []const u8) !void {
+    try runWithMode(allocator, branch, base, .human);
 }
 
-test "porcelain mode emits machine path not status" {
-    try std.testing.expect(!shouldPrintHumanStatus(true));
-    try std.testing.expect(shouldPrintPathToStdout(true));
+pub fn runMachine(allocator: std.mem.Allocator, branch: []const u8, base: []const u8) !void {
+    try runWithMode(allocator, branch, base, .machine);
 }

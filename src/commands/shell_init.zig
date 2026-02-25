@@ -114,7 +114,7 @@ const zsh_init =
     \\            seen[$branch]=1
     \\            branches+=("$branch")
     \\        fi
-    \\    done < <(command wt list --porcelain 2>/dev/null)
+    \\    done < <(command wt __list 2>/dev/null)
     \\    if [ "${#branches[@]}" -gt 0 ]; then
     \\        compadd -- "${branches[@]}"
     \\    fi
@@ -236,7 +236,7 @@ const zsh_init =
     \\            relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
     \\            relative_subdir="${relative_subdir%/}"
     \\            local output
-    \\            output=$(command wt "$1" --porcelain "${@:2}" 2>/dev/tty)
+    \\            output=$(command wt "__new" "${@:2}" 2>/dev/tty)
     \\            local exit_code=$?
     \\            if [ $exit_code -eq 0 ] && [ -n "$output" ] && [ -d "$output" ]; then
     \\                local target_dir="$output"
@@ -342,7 +342,7 @@ const bash_init =
     \\            relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
     \\            relative_subdir="${relative_subdir%/}"
     \\            local output
-    \\            output=$(command wt "$1" --porcelain "${@:2}" 2>/dev/tty)
+    \\            output=$(command wt "__new" "${@:2}" 2>/dev/tty)
     \\            local exit_code=$?
     \\            if [ $exit_code -eq 0 ] && [ -n "$output" ] && [ -d "$output" ]; then
     \\                local target_dir="$output"
@@ -367,7 +367,7 @@ const bash_init =
     \\
     \\__wt_complete_worktree_branches() {
     \\    local current branch _rest
-    \\    command wt list --porcelain 2>/dev/null | while IFS=$'\t' read -r current branch _rest; do
+    \\    command wt __list 2>/dev/null | while IFS=$'\t' read -r current branch _rest; do
     \\        if [ "$current" = "1" ]; then
     \\            continue
     \\        fi
@@ -397,12 +397,12 @@ const bash_init =
     \\
     \\    case "$cmd" in
     \\        list)
-    \\            COMPREPLY=($(compgen -W "--help -h --porcelain" -- "$cur"))
+    \\            COMPREPLY=($(compgen -W "--help -h" -- "$cur"))
     \\            return 0
     \\            ;;
     \\        new|add)
     \\            if [[ "$cur" == -* ]]; then
-    \\                COMPREPLY=($(compgen -W "--help -h --porcelain" -- "$cur"))
+    \\                COMPREPLY=($(compgen -W "--help -h" -- "$cur"))
     \\                return 0
     \\            fi
     \\            if [ "$COMP_CWORD" -eq 3 ]; then
@@ -463,7 +463,7 @@ const fish_init =
     \\end
     \\
     \\function __wt_complete_rm_branches
-    \\    command wt list --porcelain 2>/dev/null | while read -l current branch _
+    \\    command wt __list 2>/dev/null | while read -l current branch _
     \\        if test -z "$branch"; or test "$branch" = "(detached)"; or test "$branch" = "-"
     \\            continue
     \\        end
@@ -554,7 +554,7 @@ const fish_init =
     \\
     \\            set -l relative_subdir (command git rev-parse --show-prefix 2>/dev/null)
     \\            set relative_subdir (string trim -c / -- "$relative_subdir")
-    \\            set -l output (command wt "$argv[1]" --porcelain $argv[2..-1] 2>/dev/tty)
+    \\            set -l output (command wt __new $argv[2..-1] 2>/dev/tty)
     \\            set -l exit_code $status
     \\            if test $exit_code -eq 0; and test -n "$output"; and test -d "$output"
     \\                set -l target_dir "$output"
@@ -614,7 +614,7 @@ const nu_init =
     \\}
     \\
     \\def "__wt_complete_rm_branches" [] {
-    \\    let listing = (^wt list --porcelain err> /dev/null | complete)
+    \\    let listing = (^wt __list err> /dev/null | complete)
     \\    if $listing.exit_code != 0 {
     \\        return []
     \\    }
@@ -760,7 +760,7 @@ const nu_init =
     \\            }
     \\
     \\            let relative_subdir = (__wt_relative_subdir)
-    \\            let created = (^wt $cmd --porcelain ...$passthrough | complete)
+    \\            let created = (^wt __new ...$passthrough | complete)
     \\            __wt_print_stderr $created
     \\            $env.LAST_EXIT_CODE = $created.exit_code
     \\            if $created.exit_code != 0 {
@@ -823,7 +823,7 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'rm:Remove a worktree'") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'init:Create or upgrade .wt.toml'") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'shell-init:Output shell integration function'") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt list --porcelain") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __list") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -- zsh bash fish nu") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "git for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "git for-each-ref --format='%(refname:short)' refs/heads refs/remotes 2>/dev/null") != null);
@@ -840,7 +840,7 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "new|add") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "for arg in \"${@:2}\"; do") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "[ \"$arg\" = \"--help\" ]") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "\"$1\" --porcelain") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt \"__new\" \"${@:2}\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt __pick-worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_report_location()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "printf \"\\nEntered worktree: %s\\n\"") != null);
@@ -863,7 +863,7 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "new|add") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "for arg in \"${@:2}\"; do") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "[ \"$arg\" = \"--help\" ]") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bash_init, "\"$1\" --porcelain") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "command wt \"__new\" \"${@:2}\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "wt __pick-worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_report_location()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "printf \"\\nEntered worktree: %s\\n\"") != null);
@@ -878,9 +878,10 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "Subdirectory missing in new worktree, using root: $output") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "cd \"$target_dir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_worktree_branches()") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bash_init, "command wt list --porcelain") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "command wt __list") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "_wt_bash_completion()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"list new add rm init shell-init --help -h --version -V\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "--porcelain") == null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"auto builtin fzf\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"zsh bash fish nu\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "complete -F _wt_bash_completion wt") != null);
@@ -923,11 +924,11 @@ test "nu init contains wrapper and completion definitions" {
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^git for-each-ref --format='%(refname:short)' refs/heads err> /dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^git for-each-ref --format='%(refname:short)' refs/heads refs/remotes err> /dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_rm_branches\" []") != null);
-    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt list --porcelain err> /dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __list err> /dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_shell_names\" []") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "\"zsh\" \"bash\" \"fish\" \"nu\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __pick-worktree | complete") != null);
-    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt $cmd --porcelain ...$passthrough | complete") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __new ...$passthrough | complete") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "__wt_report_location $selected_path $target_dir") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "__wt_report_location $output $target_dir") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "Subdirectory missing in selected worktree, using root: ($selected_path)") != null);

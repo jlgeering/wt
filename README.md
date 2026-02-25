@@ -75,8 +75,8 @@ if (which wt | is-not-empty) {
 ## Core Commands
 
 ```bash
-wt list [--porcelain]
-wt new|add [--porcelain] <branch> [base]
+wt list
+wt new|add <branch> [base]
 wt rm [branch] [-f|--force] [--picker auto|builtin|fzf] [--no-interactive]
 wt init
 wt --version

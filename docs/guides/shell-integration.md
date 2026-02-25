@@ -21,7 +21,7 @@ When loaded via `wt shell-init zsh`, `wt` also registers zsh completion for:
 - subcommands (`list`, `new`, `add`, `rm`, `init`, `shell-init`)
 - positionals:
   - `wt new|add <branch> [base]`: git refs
-  - `wt rm [branch]`: branch names from `wt list --porcelain` (excluding current worktree branch)
+  - `wt rm [branch]`: branch names from `wt __list` (excluding current worktree branch)
   - `wt shell-init <shell>`: `zsh`, `bash`, `fish`
 
 Completion intentionally does not suggest flags.
@@ -63,7 +63,7 @@ When loaded via `wt shell-init fish`, `wt` also registers fish completion for:
 - subcommands (`list`, `new`, `add`, `rm`, `init`, `shell-init`)
 - positionals:
   - `wt new|add <branch> [base]`: git refs
-  - `wt rm [branch]`: branch names from `wt list --porcelain` (excluding current worktree branch)
+  - `wt rm [branch]`: branch names from `wt __list` (excluding current worktree branch)
   - `wt shell-init <shell>`: `zsh`, `bash`, `fish`
 
 Completion intentionally does not suggest flags.
@@ -99,7 +99,7 @@ The `nu` integration provides:
 - Picker backend for no-arg `wt` mirrors `wt rm --picker auto`: use `fzf` when available, otherwise use a built-in numbered prompt.
 - When only one worktree exists, no picker is shown; the wrapper prints a notice and returns without changing directories.
 - The wrapper intercepts `wt new ...` and `wt add ...`.
-- It calls `wt <new|add> --porcelain ...` and captures stdout (the created worktree path).
+- It calls `wt __new ...` and captures stdout (the created worktree path).
 - Before creation, it captures the current repo-relative subdirectory via `git rev-parse --show-prefix`.
 - If `wt new`/`wt add` exits successfully and the output is an existing directory:
   - it prefers `cd "$output/<relative-subdir>"` when that path exists.
