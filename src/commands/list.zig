@@ -190,13 +190,27 @@ fn writeMachineRow(stdout: anytype, row: WorktreeRow) !void {
     );
 }
 
+fn resolveCurrentWorktreeRoot(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {
+    const top_level_output = git.runGit(allocator, cwd, &.{ "rev-parse", "--show-toplevel" }) catch {
+        return try allocator.dupe(u8, cwd);
+    };
+    defer allocator.free(top_level_output);
+
+    const top_level = std.mem.trim(u8, top_level_output, " \t\r\n");
+    if (top_level.len == 0) {
+        return try allocator.dupe(u8, cwd);
+    }
+
+    return try allocator.dupe(u8, top_level);
+}
+
 fn inspectWorktree(
     allocator: std.mem.Allocator,
-    cwd: []const u8,
+    current_worktree_root: []const u8,
     wt: git.WorktreeInfo,
     base_branch: ?[]const u8,
 ) WorktreeRow {
-    const is_current = std.mem.eql(u8, cwd, wt.path);
+    const is_current = std.mem.eql(u8, current_worktree_root, wt.path);
     const branch_name = wt.branch orelse "(detached)";
     const base_ref = base_branch orelse "-";
 
@@ -296,6 +310,8 @@ fn runWithMode(allocator: std.mem.Allocator, mode: OutputMode) !void {
 
     const cwd = try std.process.getCwdAlloc(allocator);
     defer allocator.free(cwd);
+    const current_worktree_root = try resolveCurrentWorktreeRoot(allocator, cwd);
+    defer allocator.free(current_worktree_root);
 
     const wt_output = git.runGit(allocator, null, &.{ "worktree", "list", "--porcelain" }) catch {
         try ui.printLevel(stderr, use_stderr_color, .err, "not a git repository or git not found", .{});
@@ -319,7 +335,7 @@ fn runWithMode(allocator: std.mem.Allocator, mode: OutputMode) !void {
     }
 
     for (worktrees) |wt| {
-        const row = inspectWorktree(allocator, cwd, wt, base_branch);
+        const row = inspectWorktree(allocator, current_worktree_root, wt, base_branch);
         if (mode == .machine) {
             try writeMachineRow(stdout, row);
         } else {
@@ -473,4 +489,31 @@ test "writeHumanRow keeps PATH column aligned with unicode upstream in color mod
 fn columnStartWidth(line: []const u8, token: []const u8) usize {
     const idx = std.mem.indexOf(u8, line, token) orelse unreachable;
     return column_format.visibleWidth(line[0..idx]);
+}
+
+test "resolveCurrentWorktreeRoot falls back to cwd outside a git repo" {
+    const root = try resolveCurrentWorktreeRoot(std.testing.allocator, "/");
+    defer std.testing.allocator.free(root);
+
+    try std.testing.expectEqualStrings("/", root);
+}
+
+test "resolveCurrentWorktreeRoot resolves repo root from nested directory" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const repo_root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(repo_root);
+
+    const init_output = try git.runGit(std.testing.allocator, repo_root, &.{ "init" });
+    defer std.testing.allocator.free(init_output);
+
+    try tmp.dir.makePath("nested/deep");
+    const nested = try std.fs.path.join(std.testing.allocator, &.{ repo_root, "nested", "deep" });
+    defer std.testing.allocator.free(nested);
+
+    const resolved = try resolveCurrentWorktreeRoot(std.testing.allocator, nested);
+    defer std.testing.allocator.free(resolved);
+
+    try std.testing.expectEqualStrings(repo_root, resolved);
 }
