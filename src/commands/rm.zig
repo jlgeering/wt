@@ -144,30 +144,36 @@ fn isInteractiveSession() bool {
 }
 
 fn isSingleKeySupported(stdin_file: std.fs.File) bool {
-    if (builtin.target.os.tag == .windows) return false;
-    if (!stdin_file.isTty()) return false;
-    _ = std.posix.tcgetattr(stdin_file.handle) catch return false;
-    return true;
+    if (comptime builtin.target.os.tag == .windows) {
+        return false;
+    } else {
+        if (!stdin_file.isTty()) return false;
+        _ = std.posix.tcgetattr(stdin_file.handle) catch return false;
+        return true;
+    }
 }
 
 fn tryReadSingleKey(stdin_file: std.fs.File) !?u8 {
-    if (builtin.target.os.tag == .windows) return null;
-    if (!isSingleKeySupported(stdin_file)) return null;
+    if (comptime builtin.target.os.tag == .windows) {
+        return null;
+    } else {
+        if (!isSingleKeySupported(stdin_file)) return null;
 
-    const original_termios = std.posix.tcgetattr(stdin_file.handle) catch return null;
-    var raw_termios = original_termios;
-    raw_termios.lflag.ICANON = false;
-    raw_termios.lflag.ECHO = false;
-    raw_termios.lflag.ISIG = false;
-    raw_termios.cc[@intFromEnum(std.c.V.MIN)] = 1;
-    raw_termios.cc[@intFromEnum(std.c.V.TIME)] = 0;
-    std.posix.tcsetattr(stdin_file.handle, .NOW, raw_termios) catch return null;
-    defer std.posix.tcsetattr(stdin_file.handle, .NOW, original_termios) catch {};
+        const original_termios = std.posix.tcgetattr(stdin_file.handle) catch return null;
+        var raw_termios = original_termios;
+        raw_termios.lflag.ICANON = false;
+        raw_termios.lflag.ECHO = false;
+        raw_termios.lflag.ISIG = false;
+        raw_termios.cc[@intFromEnum(std.c.V.MIN)] = 1;
+        raw_termios.cc[@intFromEnum(std.c.V.TIME)] = 0;
+        std.posix.tcsetattr(stdin_file.handle, .NOW, raw_termios) catch return null;
+        defer std.posix.tcsetattr(stdin_file.handle, .NOW, original_termios) catch {};
 
-    var buf: [1]u8 = undefined;
-    const read_len = std.posix.read(stdin_file.handle, &buf) catch return null;
-    if (read_len == 0) return null;
-    return buf[0];
+        var buf: [1]u8 = undefined;
+        const read_len = std.posix.read(stdin_file.handle, &buf) catch return null;
+        if (read_len == 0) return null;
+        return buf[0];
+    }
 }
 
 fn formatCandidateSummary(buffer: []u8, candidate: RemovalCandidate) []const u8 {
