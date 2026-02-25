@@ -58,6 +58,7 @@ pub const shell_names = [_][]const u8{
     "bash",
     "fish",
     "nu",
+    "nushell",
 };
 
 pub fn commandForName(name: []const u8) ?*const CommandSpec {
@@ -92,9 +93,10 @@ test "shell-init command positional uses shell_name kind" {
 }
 
 test "shell names include fish" {
-    try std.testing.expectEqual(@as(usize, 4), shell_names.len);
+    try std.testing.expectEqual(@as(usize, 5), shell_names.len);
     try std.testing.expectEqualStrings("zsh", shell_names[0]);
     try std.testing.expectEqualStrings("bash", shell_names[1]);
     try std.testing.expectEqualStrings("fish", shell_names[2]);
     try std.testing.expectEqualStrings("nu", shell_names[3]);
+    try std.testing.expectEqualStrings("nushell", shell_names[4]);
 }

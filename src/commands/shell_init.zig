@@ -434,7 +434,7 @@ const bash_init =
     \\            if [[ "$cur" == -* ]]; then
     \\                COMPREPLY=($(compgen -W "--help -h" -- "$cur"))
     \\            else
-    \\                COMPREPLY=($(compgen -W "zsh bash fish nu" -- "$cur"))
+++ "                COMPREPLY=($(compgen -W \"" ++ shell_name_choices ++ "\" -- \"$cur\"))\n" ++
     \\            fi
     \\            return 0
     \\            ;;
@@ -825,7 +825,7 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'init:Create or upgrade .wt.toml'") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'shell-init:Output shell integration function'") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __list") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -- zsh bash fish nu") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -- zsh bash fish nu nushell") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "git for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "git for-each-ref --format='%(refname:short)' refs/heads refs/remotes 2>/dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "if [ \"$CURRENT\" -eq 3 ]; then") != null);
@@ -886,7 +886,7 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"list ls new add rm init shell-init --help -h --version -V\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "--porcelain") == null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"auto builtin fzf\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"zsh bash fish nu\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"zsh bash fish nu nushell\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "[ \"$branch\" != \"(detached)\" ]") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "complete -F _wt_bash_completion wt") != null);
 }
@@ -901,7 +901,7 @@ test "fish init contains function definition and completion" {
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"ls\" -d \"Alias for list\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"add\" -d \"Alias for new\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_seen_subcommand_from new add; and test (count (commandline -opc)) -eq 2\" -a \"(__wt_complete_local_branches)\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_seen_subcommand_from shell-init; and test (count (commandline -opc)) -eq 2\" -a \"zsh bash fish nu\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_seen_subcommand_from shell-init; and test (count (commandline -opc)) -eq 2\" -a \"zsh bash fish nu nushell\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "function wt --wraps wt --description 'wt shell integration'") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "string match -qr '^-' -- \"$first\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "command wt __pick-worktree") != null);
@@ -933,7 +933,7 @@ test "nu init contains wrapper and completion definitions" {
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_rm_branches\" []") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __list err> /dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_shell_names\" []") != null);
-    try std.testing.expect(std.mem.indexOf(u8, nu_init, "\"zsh\" \"bash\" \"fish\" \"nu\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "\"zsh\" \"bash\" \"fish\" \"nu\" \"nushell\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __pick-worktree | complete") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __new ...$passthrough | complete") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "__wt_report_location $selected_path $target_dir") != null);
