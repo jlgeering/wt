@@ -59,8 +59,10 @@ fn runWithMode(allocator: std.mem.Allocator, branch: []const u8, base: []const u
         return;
     } else |_| {}
 
-    // Check if branch already exists
-    const branch_exists = if (git.runGit(allocator, null, &.{ "rev-parse", "--verify", branch })) |out| blk: {
+    // Check if local branch already exists (ignore tags/other refs with the same name).
+    const branch_ref = try std.fmt.allocPrint(allocator, "refs/heads/{s}", .{branch});
+    defer allocator.free(branch_ref);
+    const branch_exists = if (git.runGit(allocator, null, &.{ "rev-parse", "--verify", branch_ref })) |out| blk: {
         allocator.free(out);
         break :blk true;
     } else |_| false;
