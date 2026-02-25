@@ -10,6 +10,13 @@ const OutputMode = enum {
     machine,
 };
 
+fn isRegisteredWorktreePath(worktrees: []const git.WorktreeInfo, path: []const u8) bool {
+    for (worktrees) |wt| {
+        if (std.mem.eql(u8, wt.path, path)) return true;
+    }
+    return false;
+}
+
 fn runWithMode(allocator: std.mem.Allocator, branch: []const u8, base: []const u8, mode: OutputMode) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
     const stderr = std.fs.File.stderr().deprecatedWriter();
@@ -37,6 +44,12 @@ fn runWithMode(allocator: std.mem.Allocator, branch: []const u8, base: []const u
 
     // Check if worktree already exists
     if (std.fs.cwd().access(wt_path, .{})) |_| {
+        if (!isRegisteredWorktreePath(worktrees, wt_path)) {
+            try ui.printLevel(stderr, use_color, .err, "path collision at {s}: exists but is not a git worktree", .{wt_path});
+            try ui.printLevel(stderr, use_color, .info, "remove or rename the path, then run `wt new` again", .{});
+            std.process.exit(1);
+        }
+
         if (!is_machine) {
             try ui.printLevel(stderr, use_color, .warn, "worktree already exists at {s}", .{wt_path});
         }
@@ -107,4 +120,14 @@ pub fn runHuman(allocator: std.mem.Allocator, branch: []const u8, base: []const 
 
 pub fn runMachine(allocator: std.mem.Allocator, branch: []const u8, base: []const u8) !void {
     try runWithMode(allocator, branch, base, .machine);
+}
+
+test "isRegisteredWorktreePath returns true only for listed worktrees" {
+    const worktrees = [_]git.WorktreeInfo{
+        .{ .path = "/tmp/repo", .head = "abc", .branch = "main", .is_bare = false },
+        .{ .path = "/tmp/repo--feat", .head = "def", .branch = "feat", .is_bare = false },
+    };
+
+    try std.testing.expect(isRegisteredWorktreePath(&worktrees, "/tmp/repo--feat"));
+    try std.testing.expect(!isRegisteredWorktreePath(&worktrees, "/tmp/repo--other"));
 }
