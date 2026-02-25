@@ -371,7 +371,7 @@ const bash_init =
     \\        if [ "$current" = "1" ]; then
     \\            continue
     \\        fi
-    \\        if [ -n "$branch" ] && [ "$branch" != "-" ]; then
+    \\        if [ -n "$branch" ] && [ "$branch" != "(detached)" ] && [ "$branch" != "-" ]; then
     \\            printf '%s\n' "$branch"
     \\        fi
     \\    done
@@ -887,6 +887,7 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "--porcelain") == null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"auto builtin fzf\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"zsh bash fish nu\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "[ \"$branch\" != \"(detached)\" ]") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "complete -F _wt_bash_completion wt") != null);
 }
 
