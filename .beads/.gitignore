@@ -23,6 +23,9 @@ last-touched
 db.sqlite
 bd.db
 
+# History backups (local snapshots, never commit)
+.br_history/
+
 # Worktree redirect file (contains relative path to main repo's .beads/)
 # Must not be committed as paths would be wrong in other clones
 redirect
