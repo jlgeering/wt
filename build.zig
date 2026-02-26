@@ -123,4 +123,21 @@ pub fn build(b: *std.Build) void {
     const integration_step = b.step("test-integration", "Run integration tests");
     integration_step.dependOn(&run_integration_lib_tests.step);
     integration_step.dependOn(&run_integration_workflow_tests.step);
+
+    const release_tool_test_module = b.createModule(.{
+        .root_source_file = b.path("test/release_tool_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const release_tool_module = b.createModule(.{
+        .root_source_file = b.path("src/tools/release.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    release_tool_test_module.addImport("release_tool", release_tool_module);
+    const release_tool_tests = b.addTest(.{
+        .root_module = release_tool_test_module,
+    });
+    const run_release_tool_tests = b.addRunArtifact(release_tool_tests);
+    test_step.dependOn(&run_release_tool_tests.step);
 }

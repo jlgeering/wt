@@ -23,9 +23,6 @@ This contract is chosen so users can install via `mise` `github:jlgeering/wt` wi
 - `CHANGELOG.md` includes `## [X.Y.Z] - YYYY-MM-DD`
 - `build.zig.zon` and `build.zig` fallback version both set to `X.Y.Z`
 - GitHub CLI authenticated: `mise x -- gh auth status`
-- Local validation passes:
-  - `mise run check`
-  - `mise run build:all`
 
 ## Canonical command
 
@@ -39,24 +36,36 @@ Example:
 mise run release -- 0.1.1
 ```
 
-## What the release script does
+## What the mise release pipeline does
 
-`scripts/release.sh` performs the full flow:
+`mise run release -- <X.Y.Z>` orchestrates an internal task DAG and a Zig helper (`src/tools/release.zig`):
 
-1. Validates release preconditions:
-   - clean git tree on `main`
-   - semver input
-   - no existing `vX.Y.Z` tag (local or remote)
-   - version consistency across files
-   - changelog section exists for `X.Y.Z`
-2. Runs preflight checks (`mise run check`).
-3. Builds all target binaries with `-Dapp_version=X.Y.Z`.
-4. Packages artifacts with stable names and generates `SHA256SUMS`.
-5. Pushes `main`, creates/pushes annotated tag `vX.Y.Z`.
-6. Creates a **draft** GitHub release with changelog-derived notes and assets.
-7. Verifies draft state, asset count, and notes body.
-8. Publishes (`--draft=false`) and marks as latest.
-9. Verifies `vX.Y.Z` is the latest GitHub release.
+1. `release` stores version context in `dist/release/.current-version`.
+2. `release:validate` validates git/version/changelog preconditions and writes notes to `dist/release/vX.Y.Z/notes.md`.
+3. `release:build:*` cross-builds all target binaries with `-Dapp_version=X.Y.Z` into `dist/release/vX.Y.Z/build/<target>`.
+4. `release:package` verifies host artifact version, packages archives, writes `SHA256SUMS`, and verifies checksums.
+5. `release:git` pushes `main` and pushes annotated tag `vX.Y.Z`.
+6. `release:gh:create-draft` creates a draft GitHub release with notes and required assets.
+7. `release:gh:verify-draft` verifies draft state, asset count, and notes body.
+8. `release:gh:publish` publishes and marks latest.
+9. `release:gh:verify-latest` verifies latest release tag and prints release URL.
+
+## Staging layout
+
+Release artifacts are built in deterministic paths:
+
+- `dist/release/vX.Y.Z/build/<target>/...`
+- `dist/release/vX.Y.Z/dist/...`
+- `dist/release/vX.Y.Z/notes.md`
+
+## Inspecting the pipeline
+
+Use these commands to inspect the internal DAG without publishing:
+
+```bash
+mise tasks deps release:pipeline
+mise run -n release:pipeline
+```
 
 ## Draft verification checklist
 

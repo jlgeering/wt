@@ -19,7 +19,7 @@ Adopt the following release contract for all stable releases:
 
 1. Canonical release process lives in `docs/guides/release-process.md`.
 2. Canonical release notes source is `CHANGELOG.md` section `## [X.Y.Z]`.
-3. Release command is `mise run release -- <X.Y.Z>` via `scripts/release.sh`.
+3. Release command is `mise run release -- <X.Y.Z>` (implementation defined by the canonical runbook).
 4. Every release publishes exactly these assets:
    - `wt-vX.Y.Z-darwin-arm64.tar.gz`
    - `wt-vX.Y.Z-darwin-amd64.tar.gz`
@@ -41,7 +41,7 @@ Benefits:
 
 Costs and risks:
 
-- release script maintenance overhead
+- release pipeline maintenance overhead
 - stricter preconditions can block release until docs/version metadata are aligned
 - signing/attestation remains a future improvement
 
@@ -52,3 +52,4 @@ Costs and risks:
 - <https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases>
 - <https://cli.github.com/manual/gh_release_create>
 - <https://mise.jdx.dev/dev-tools/backends/github.html>
+- `docs/adr/2026-02-25-wt-mise-release-task-graph.md`
