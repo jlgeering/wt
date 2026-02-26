@@ -1,7 +1,6 @@
 [[tools."github:Dicklesworthstone/beads_rust"]]
-version = "0.1.19"
+version = "0.1.14"
 backend = "github:Dicklesworthstone/beads_rust"
-"platforms.macos-arm64" = { checksum = "sha256:77ff32393ff56fcdd2fd09c780703a759d038c0b8b171f5a9d0ef9c3a1436e4a", url = "https://github.com/Dicklesworthstone/beads_rust/releases/download/v0.1.19/br-v0.1.19-darwin_arm64.tar.gz", url_api = "https://api.github.com/repos/Dicklesworthstone/beads_rust/releases/assets/361041595"}
 
 [[tools.zig]]
 version = "0.15.2"
