@@ -797,18 +797,20 @@ pub fn run(shell: []const u8) !void {
     const stderr = std.fs.File.stderr().deprecatedWriter();
     const use_color = ui.shouldUseColor(std.fs.File.stderr());
 
-    if (std.mem.eql(u8, shell, "zsh")) {
-        try stdout.print("{s}\n", .{zsh_init});
-    } else if (std.mem.eql(u8, shell, "bash")) {
-        try stdout.print("{s}\n", .{bash_init});
-    } else if (std.mem.eql(u8, shell, "fish")) {
-        try stdout.print("{s}\n", .{fish_init});
-    } else if (std.mem.eql(u8, shell, "nu") or std.mem.eql(u8, shell, "nushell")) {
-        try stdout.print("{s}\n", .{nu_init});
+    if (scriptForShell(shell)) |script| {
+        try stdout.print("{s}\n", .{script});
     } else {
         try ui.printLevel(stderr, use_color, .err, "unsupported shell: {s}. Supported: zsh, bash, fish, nu", .{shell});
         std.process.exit(1);
     }
+}
+
+pub fn scriptForShell(shell: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, shell, "zsh")) return zsh_init;
+    if (std.mem.eql(u8, shell, "bash")) return bash_init;
+    if (std.mem.eql(u8, shell, "fish")) return fish_init;
+    if (std.mem.eql(u8, shell, "nu") or std.mem.eql(u8, shell, "nushell")) return nu_init;
+    return null;
 }
 
 test "zsh init contains function definition" {
