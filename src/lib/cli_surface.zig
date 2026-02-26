@@ -61,6 +61,33 @@ pub const shell_names = [_][]const u8{
     "nushell",
 };
 
+fn buildDocCompletionCommandList() []const u8 {
+    comptime var out: []const u8 = "";
+    comptime var first = true;
+    inline for (completion_commands) |command| {
+        if (!first) out = out ++ ", ";
+        out = out ++ "`" ++ command.name ++ "`";
+        first = false;
+        inline for (command.aliases) |alias| {
+            out = out ++ ", `" ++ alias ++ "`";
+        }
+    }
+    return out;
+}
+
+fn buildDocShellNameList() []const u8 {
+    comptime var out: []const u8 = "";
+    inline for (shell_names, 0..) |shell_name, idx| {
+        if (idx != 0) out = out ++ ", ";
+        out = out ++ "`" ++ shell_name ++ "`";
+    }
+    return out;
+}
+
+const doc_completion_command_list = buildDocCompletionCommandList();
+const doc_shell_name_list = buildDocShellNameList();
+const doc_subcommands_clause = "subcommands (" ++ doc_completion_command_list ++ ")";
+
 pub fn commandForName(name: []const u8) ?*const CommandSpec {
     inline for (&completion_commands) |*command| {
         if (std.mem.eql(u8, command.name, name)) return command;
@@ -99,4 +126,42 @@ test "shell names include fish" {
     try std.testing.expectEqualStrings("fish", shell_names[2]);
     try std.testing.expectEqualStrings("nu", shell_names[3]);
     try std.testing.expectEqualStrings("nushell", shell_names[4]);
+}
+
+test "shell docs include generated shell-name list from metadata" {
+    const allocator = std.testing.allocator;
+    const guide_doc = try std.fs.cwd().readFileAlloc(
+        allocator,
+        "docs/guides/shell-integration.md",
+        1024 * 1024,
+    );
+    defer allocator.free(guide_doc);
+    const command_ref_doc = try std.fs.cwd().readFileAlloc(
+        allocator,
+        "docs/specs/command-reference.md",
+        1024 * 1024,
+    );
+    defer allocator.free(command_ref_doc);
+
+    try std.testing.expect(std.mem.indexOf(u8, guide_doc, doc_shell_name_list) != null);
+    try std.testing.expect(std.mem.indexOf(u8, command_ref_doc, doc_shell_name_list) != null);
+}
+
+test "shell docs include generated completion subcommand list from metadata" {
+    const allocator = std.testing.allocator;
+    const guide_doc = try std.fs.cwd().readFileAlloc(
+        allocator,
+        "docs/guides/shell-integration.md",
+        1024 * 1024,
+    );
+    defer allocator.free(guide_doc);
+    const command_ref_doc = try std.fs.cwd().readFileAlloc(
+        allocator,
+        "docs/specs/command-reference.md",
+        1024 * 1024,
+    );
+    defer allocator.free(command_ref_doc);
+
+    try std.testing.expect(std.mem.indexOf(u8, guide_doc, doc_subcommands_clause) != null);
+    try std.testing.expect(std.mem.indexOf(u8, command_ref_doc, doc_subcommands_clause) != null);
 }

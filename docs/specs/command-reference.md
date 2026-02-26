@@ -11,7 +11,7 @@ wt --version
 wt shell-init <shell>
 ```
 
-Supported shells for `shell-init` are `zsh`, `bash`, `fish`, and `nu` (alias: `nushell`).
+Supported shells for `shell-init` are `zsh`, `bash`, `fish`, `nu`, `nushell`.
 When using `wt shell-init bash`, the emitted shell code also registers a Bash completion function for `wt`.
 
 Use `wt <command> --help` for command details.
@@ -22,6 +22,9 @@ Internal commands reserved for shell wrappers:
 wt __list
 wt __new <branch> [base]
 wt __pick-worktree
+wt __complete-local-branches
+wt __complete-refs
+wt __complete-rm-branches
 ```
 
 ## Completion via shell-init
