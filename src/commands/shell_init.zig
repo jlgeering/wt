@@ -184,7 +184,7 @@ fn emitZshInit() []const u8 {
     \\            seen[$branch]=1
     \\            branches+=("$branch")
     \\        fi
-    \\    done < <(command git for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null)
+    \\    done < <(command wt __complete-local-branches 2>/dev/null)
     \\    if [ "${#branches[@]}" -gt 0 ]; then
     \\        compadd -- "${branches[@]}"
     \\    fi
@@ -202,7 +202,7 @@ fn emitZshInit() []const u8 {
     \\            seen[$ref]=1
     \\            refs+=("$ref")
     \\        fi
-    \\    done < <(command git for-each-ref --format='%(refname:short)' refs/heads refs/remotes 2>/dev/null)
+    \\    done < <(command wt __complete-refs 2>/dev/null)
     \\    if [ "${#refs[@]}" -gt 0 ]; then
     \\        compadd -- "${refs[@]}"
     \\    fi
@@ -223,7 +223,7 @@ fn emitZshInit() []const u8 {
     \\            seen[$branch]=1
     \\            branches+=("$branch")
     \\        fi
-    \\    done < <(command wt __list 2>/dev/null)
+    \\    done < <(command wt __complete-rm-branches 2>/dev/null)
     \\    if [ "${#branches[@]}" -gt 0 ]; then
     \\        compadd -- "${branches[@]}"
     \\    fi
@@ -287,22 +287,15 @@ fn emitBashInit() []const u8 {
     \\
     \\__wt_complete_worktree_branches() {
     \\    local current branch _rest
-    \\    command wt __list 2>/dev/null | while IFS=$'\t' read -r current branch _rest; do
-    \\        if [ "$current" = "1" ]; then
-    \\            continue
-    \\        fi
-    \\        if [ -n "$branch" ] && [ "$branch" != "(detached)" ] && [ "$branch" != "-" ]; then
-    \\            printf '%s\n' "$branch"
-    \\        fi
-    \\    done
+    \\    command wt __complete-rm-branches 2>/dev/null
     \\}
     \\
     \\__wt_complete_local_branches() {
-    \\    command git for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null
+    \\    command wt __complete-local-branches 2>/dev/null
     \\}
     \\
     \\__wt_complete_refs() {
-    \\    command git for-each-ref --format='%(refname:short)' refs/heads refs/remotes 2>/dev/null
+    \\    command wt __complete-refs 2>/dev/null
     \\}
     \\
     \\_wt_bash_completion() {
@@ -404,23 +397,15 @@ fn emitFishInit() []const u8 {
     \\# Add to config.fish: wt shell-init fish | source
     \\
     \\function __wt_complete_local_branches
-    \\    command git for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null | sort -u
+    \\    command wt __complete-local-branches 2>/dev/null | sort -u
     \\end
     \\
     \\function __wt_complete_refs
-    \\    command git for-each-ref --format='%(refname:short)' refs/heads refs/remotes 2>/dev/null | sort -u
+    \\    command wt __complete-refs 2>/dev/null | sort -u
     \\end
     \\
     \\function __wt_complete_rm_branches
-    \\    command wt __list 2>/dev/null | while read -l current branch _
-    \\        if test -z "$branch"; or test "$branch" = "(detached)"; or test "$branch" = "-"
-    \\            continue
-    \\        end
-    \\        if test "$current" = "1"
-    \\            continue
-    \\        end
-    \\        echo "$branch"
-    \\    end | sort -u
+    \\    command wt __complete-rm-branches 2>/dev/null | sort -u
     \\end
     \\
     \\complete -e -c wt
@@ -544,7 +529,7 @@ fn emitNuInit() []const u8 {
     \\}
     \\
     \\def "__wt_complete_local_branches" [] {
-    \\    let refs = (^git for-each-ref --format='%(refname:short)' refs/heads err> /dev/null | complete)
+    \\    let refs = (^wt __complete-local-branches err> /dev/null | complete)
     \\    if $refs.exit_code != 0 {
     \\        return []
     \\    }
@@ -556,7 +541,7 @@ fn emitNuInit() []const u8 {
     \\}
     \\
     \\def "__wt_complete_refs" [] {
-    \\    let refs = (^git for-each-ref --format='%(refname:short)' refs/heads refs/remotes err> /dev/null | complete)
+    \\    let refs = (^wt __complete-refs err> /dev/null | complete)
     \\    if $refs.exit_code != 0 {
     \\        return []
     \\    }
@@ -568,17 +553,14 @@ fn emitNuInit() []const u8 {
     \\}
     \\
     \\def "__wt_complete_rm_branches" [] {
-    \\    let listing = (^wt __list err> /dev/null | complete)
+    \\    let listing = (^wt __complete-rm-branches err> /dev/null | complete)
     \\    if $listing.exit_code != 0 {
     \\        return []
     \\    }
     \\    $listing.stdout
     \\    | lines
-    \\    | each {|line| $line | split row "\t"}
-    \\    | where {|cols| ($cols | length) >= 2}
-    \\    | each {|cols| { current: ($cols | get 0), branch: ($cols | get 1) }}
-    \\    | where {|row| $row.current != "1" and $row.branch != "(detached)" and $row.branch != "-"}
-    \\    | get branch
+    \\    | each {|it| $it | str trim}
+    \\    | where {|it| $it != ""}
     \\    | uniq
     \\}
     \\
@@ -784,10 +766,10 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'rm:Remove a worktree'") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'init:Create or upgrade .wt.toml'") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'shell-init:Output shell integration function'") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __list") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __complete-rm-branches") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -- zsh bash fish nu nushell") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "git for-each-ref --format='%(refname:short)' refs/heads 2>/dev/null") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "git for-each-ref --format='%(refname:short)' refs/heads refs/remotes 2>/dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __complete-local-branches 2>/dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __complete-refs 2>/dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "if [ \"$CURRENT\" -eq 3 ]; then") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "elif [ \"$CURRENT\" -eq 4 ]; then") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_local_branches") != null);
@@ -843,7 +825,7 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_worktree_branches()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_local_branches()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_refs()") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bash_init, "command wt __list") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "command wt __complete-rm-branches") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "_wt_bash_completion()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "for ((i=2; i<COMP_CWORD; i++)); do") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "branches=$(__wt_complete_local_branches)") != null);
@@ -852,7 +834,6 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "--porcelain") == null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"auto builtin fzf\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"zsh bash fish nu nushell\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bash_init, "[ \"$branch\" != \"(detached)\" ]") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "complete -F _wt_bash_completion wt") != null);
 }
 
@@ -893,10 +874,10 @@ test "nu init contains wrapper and completion definitions" {
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "{ value: \"new\", description: \"Create a new worktree\" }") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "{ value: \"add\", description: \"Alias for new\" }") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_local_branches\" []") != null);
-    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^git for-each-ref --format='%(refname:short)' refs/heads err> /dev/null") != null);
-    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^git for-each-ref --format='%(refname:short)' refs/heads refs/remotes err> /dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __complete-local-branches err> /dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __complete-refs err> /dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_rm_branches\" []") != null);
-    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __list err> /dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __complete-rm-branches err> /dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_shell_names\" []") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "\"zsh\" \"bash\" \"fish\" \"nu\" \"nushell\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __pick-worktree | complete") != null);

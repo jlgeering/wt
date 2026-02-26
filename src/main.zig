@@ -8,6 +8,7 @@ const rm_cmd = @import("commands/rm.zig");
 const pick_worktree_cmd = @import("commands/pick_worktree.zig");
 const shell_init_cmd = @import("commands/shell_init.zig");
 const init_cmd = @import("commands/init.zig");
+const complete_cmd = @import("commands/complete.zig");
 const ui = @import("lib/ui.zig");
 
 const root_description = "Git worktree manager";
@@ -61,6 +62,9 @@ fn buildRootCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: s
         try buildNewCommand(writer, reader, allocator),
         try buildInternalListCommand(writer, reader, allocator),
         try buildInternalNewCommand(writer, reader, allocator),
+        try buildInternalCompleteLocalBranchesCommand(writer, reader, allocator),
+        try buildInternalCompleteRefsCommand(writer, reader, allocator),
+        try buildInternalCompleteRmBranchesCommand(writer, reader, allocator),
         try buildRmCommand(writer, reader, allocator),
         try buildInitCommand(writer, reader, allocator),
         try buildShellInitCommand(writer, reader, allocator),
@@ -161,6 +165,30 @@ fn buildRmCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std
     return cmd;
 }
 
+fn buildInternalCompleteLocalBranchesCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    return zli.Command.init(writer, reader, allocator, .{
+        .name = "__complete-local-branches",
+        .description = "Internal: completion candidates for local branches",
+        .section_title = "Internal",
+    }, runInternalCompleteLocalBranches);
+}
+
+fn buildInternalCompleteRefsCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    return zli.Command.init(writer, reader, allocator, .{
+        .name = "__complete-refs",
+        .description = "Internal: completion candidates for branch and remote refs",
+        .section_title = "Internal",
+    }, runInternalCompleteRefs);
+}
+
+fn buildInternalCompleteRmBranchesCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    return zli.Command.init(writer, reader, allocator, .{
+        .name = "__complete-rm-branches",
+        .description = "Internal: completion candidates for `wt rm` branch argument",
+        .section_title = "Internal",
+    }, runInternalCompleteRmBranches);
+}
+
 fn buildInitCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
     return zli.Command.init(writer, reader, allocator, .{
         .name = "init",
@@ -259,6 +287,18 @@ fn runRm(ctx: zli.CommandContext) !void {
 
 fn runInit(ctx: zli.CommandContext) !void {
     try init_cmd.run(ctx.allocator);
+}
+
+fn runInternalCompleteLocalBranches(ctx: zli.CommandContext) !void {
+    try complete_cmd.runLocalBranches(ctx.allocator);
+}
+
+fn runInternalCompleteRefs(ctx: zli.CommandContext) !void {
+    try complete_cmd.runRefs(ctx.allocator);
+}
+
+fn runInternalCompleteRmBranches(ctx: zli.CommandContext) !void {
+    try complete_cmd.runRmBranches(ctx.allocator);
 }
 
 fn runShellInit(ctx: zli.CommandContext) !void {
