@@ -18,11 +18,13 @@
 
 Built-in recommendation patterns currently include:
 
-- `mise.local.toml`, `.mise.local.toml`, and other `mise*local*.toml` variants
-- `.claude/settings.local.json`
-- `.env.local` and `.env.*.local`
-- `.vscode/settings.local.json`
-- `.envrc` (symlink recommendation)
+- symlink recommendations:
+  - `mise.local.toml`, `.mise.local.toml`, and other `mise*local*.toml` variants
+  - `.claude/settings.local.json`
+  - `.envrc`
+- copy recommendations:
+  - `.env.local` and `.env.*.local`
+  - `.vscode/settings.local.json`
 
 Built-in command recommendations currently include:
 
@@ -43,10 +45,10 @@ Example:
 
 ```toml
 [copy]
-paths = ["deps", ".claude/settings.local.json"]
+paths = ["deps"]
 
 [symlink]
-paths = ["mise.local.toml"]
+paths = [".claude/settings.local.json", "mise.local.toml"]
 
 [run]
 commands = ["mise trust"]

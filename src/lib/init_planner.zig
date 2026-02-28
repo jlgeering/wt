@@ -802,18 +802,18 @@ test "discoverRecommendations finds file and command suggestions" {
     });
     defer freeRecommendations(std.testing.allocator, recs);
 
-    var saw_copy_mise = false;
-    var saw_copy_claude = false;
+    var saw_symlink_mise = false;
+    var saw_symlink_claude = false;
     var saw_mise_trust = false;
 
     for (recs) |rec| {
-        if (rec.section == .copy and std.mem.eql(u8, rec.value, "mise.local.toml")) saw_copy_mise = true;
-        if (rec.section == .copy and std.mem.eql(u8, rec.value, ".claude/settings.local.json")) saw_copy_claude = true;
+        if (rec.section == .symlink and std.mem.eql(u8, rec.value, "mise.local.toml")) saw_symlink_mise = true;
+        if (rec.section == .symlink and std.mem.eql(u8, rec.value, ".claude/settings.local.json")) saw_symlink_claude = true;
         if (rec.section == .run and std.mem.eql(u8, rec.value, "mise trust")) saw_mise_trust = true;
     }
 
-    try std.testing.expect(saw_copy_mise);
-    try std.testing.expect(saw_copy_claude);
+    try std.testing.expect(saw_symlink_mise);
+    try std.testing.expect(saw_symlink_claude);
     try std.testing.expect(saw_mise_trust);
 }
 
@@ -836,22 +836,22 @@ test "discoverRecommendations includes invocation subdir matches across setup ty
     });
     defer freeRecommendations(std.testing.allocator, recs);
 
-    var saw_subdir_copy_mise = false;
-    var saw_subdir_copy_claude = false;
+    var saw_subdir_symlink_mise = false;
+    var saw_subdir_symlink_claude = false;
     var saw_subdir_symlink_envrc = false;
     var saw_mise_trust = false;
     var saw_direnv_allow = false;
 
     for (recs) |rec| {
-        if (rec.section == .copy and std.mem.eql(u8, rec.value, "apps/api/mise.local.toml")) saw_subdir_copy_mise = true;
-        if (rec.section == .copy and std.mem.eql(u8, rec.value, "apps/api/.claude/settings.local.json")) saw_subdir_copy_claude = true;
+        if (rec.section == .symlink and std.mem.eql(u8, rec.value, "apps/api/mise.local.toml")) saw_subdir_symlink_mise = true;
+        if (rec.section == .symlink and std.mem.eql(u8, rec.value, "apps/api/.claude/settings.local.json")) saw_subdir_symlink_claude = true;
         if (rec.section == .symlink and std.mem.eql(u8, rec.value, "apps/api/.envrc")) saw_subdir_symlink_envrc = true;
         if (rec.section == .run and std.mem.eql(u8, rec.value, "mise trust")) saw_mise_trust = true;
         if (rec.section == .run and std.mem.eql(u8, rec.value, "direnv allow")) saw_direnv_allow = true;
     }
 
-    try std.testing.expect(saw_subdir_copy_mise);
-    try std.testing.expect(saw_subdir_copy_claude);
+    try std.testing.expect(saw_subdir_symlink_mise);
+    try std.testing.expect(saw_subdir_symlink_claude);
     try std.testing.expect(saw_subdir_symlink_envrc);
     try std.testing.expect(saw_mise_trust);
     try std.testing.expect(saw_direnv_allow);

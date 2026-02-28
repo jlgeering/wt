@@ -58,9 +58,9 @@ pub const AntiPatternRunTokenRule = struct {
 pub const path_rules = [_]PathRule{
     .{
         .id = "mise-local-file",
-        .section = .copy,
-        .prompt = "Copy local mise config into new worktrees",
-        .reason = "Local mise variants are often machine-specific and should not be shared across worktrees by symlink.",
+        .section = .symlink,
+        .prompt = "Symlink local mise config from the main repo",
+        .reason = "Keeping local mise variants shared across worktrees avoids configuration drift.",
         .patterns = &.{
             .{ .kind = .exact, .value = "mise.local.toml" },
             .{ .kind = .exact, .value = ".mise.local.toml" },
@@ -70,9 +70,9 @@ pub const path_rules = [_]PathRule{
     },
     .{
         .id = "claude-local-settings",
-        .section = .copy,
-        .prompt = "Copy Claude local settings",
-        .reason = "Local Claude settings usually contain developer-local preferences or paths.",
+        .section = .symlink,
+        .prompt = "Symlink Claude local settings from the main repo",
+        .reason = "Sharing Claude local settings keeps agent preferences and paths consistent across worktrees.",
         .patterns = &.{
             .{ .kind = .exact, .value = ".claude/settings.local.json" },
         },
@@ -195,4 +195,23 @@ test "matchesPattern exact, prefix, and glob" {
     try std.testing.expect(matchesPattern(.{ .kind = .glob, .value = "mise*local*.toml" }, "mise.local.toml"));
     try std.testing.expect(matchesPattern(.{ .kind = .glob, .value = "mise*local*.toml" }, "mise.foo.local.bar.toml"));
     try std.testing.expect(!matchesPattern(.{ .kind = .glob, .value = "mise*local*.toml" }, "mise.toml"));
+}
+
+test "default setup strategy for mise and claude local files is symlink" {
+    var saw_mise_rule = false;
+    var saw_claude_rule = false;
+
+    for (path_rules) |rule| {
+        if (std.mem.eql(u8, rule.id, "mise-local-file")) {
+            saw_mise_rule = true;
+            try std.testing.expectEqual(Section.symlink, rule.section);
+        }
+        if (std.mem.eql(u8, rule.id, "claude-local-settings")) {
+            saw_claude_rule = true;
+            try std.testing.expectEqual(Section.symlink, rule.section);
+        }
+    }
+
+    try std.testing.expect(saw_mise_rule);
+    try std.testing.expect(saw_claude_rule);
 }
