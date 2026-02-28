@@ -108,7 +108,7 @@ fn runWithMode(allocator: std.mem.Allocator, branch: []const u8, base: []const u
     var cfg = try config.loadConfigFile(allocator, main_path);
     defer cfg.deinit();
 
-    const log_mode: setup.LogMode = if (is_machine) .quiet else .human;
+    const log_mode: setup.LogMode = if (is_machine) .machine else .human;
     try setup.runAllSetup(allocator, cfg.value, main_path, wt_path, log_mode);
 
     if (is_machine) {

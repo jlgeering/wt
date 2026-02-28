@@ -5,7 +5,8 @@ const ui = @import("ui.zig");
 
 pub const LogMode = enum {
     human,
-    quiet,
+    machine,
+    silent,
 };
 
 const SetupShell = struct {
@@ -19,7 +20,20 @@ const PathValidationIssue = enum {
     traversal,
 };
 
-fn logMessage(level: ui.Level, comptime fmt: []const u8, args: anytype) void {
+fn shouldEmitLog(mode: LogMode, level: ui.Level) bool {
+    return switch (mode) {
+        .human => true,
+        .machine => switch (level) {
+            .warn, .err => true,
+            else => false,
+        },
+        .silent => false,
+    };
+}
+
+fn logMessage(mode: LogMode, level: ui.Level, comptime fmt: []const u8, args: anytype) void {
+    if (!shouldEmitLog(mode, level)) return;
+
     const stderr_file = std.fs.File.stderr();
     const stderr = stderr_file.deprecatedWriter();
     const use_color = ui.shouldUseColor(stderr_file);
@@ -120,7 +134,7 @@ pub fn cowCopy(
     mode: LogMode,
 ) !void {
     if (detectUnsafeRelPath(rel_path)) |issue| {
-        logMessage(.warn, "skip copy {s}: invalid setup path ({s})", .{ rel_path, pathIssueLabel(issue) });
+        logMessage(mode, .warn, "skip copy {s}: invalid setup path ({s})", .{ rel_path, pathIssueLabel(issue) });
         return;
     }
 
@@ -132,7 +146,7 @@ pub fn cowCopy(
     // Check source exists
     std.fs.cwd().access(source, .{}) catch {
         if (mode == .human) {
-            logMessage(.info, "skip copy {s}: source doesn't exist", .{rel_path});
+            logMessage(mode, .info, "skip copy {s}: source doesn't exist", .{rel_path});
         }
         return;
     };
@@ -140,7 +154,7 @@ pub fn cowCopy(
     // Check target doesn't already exist
     if (std.fs.cwd().access(target, .{})) |_| {
         if (mode == .human) {
-            logMessage(.info, "skip copy {s}: already exists", .{rel_path});
+            logMessage(mode, .info, "skip copy {s}: already exists", .{rel_path});
         }
         return;
     } else |_| {}
@@ -157,7 +171,7 @@ pub fn cowCopy(
 
     if (builtin.os.tag == .windows) {
         copyPathPortable(allocator, source, target) catch {
-            logMessage(.warn, "copy failed for {s}", .{rel_path});
+            logMessage(mode, .warn, "copy failed for {s}", .{rel_path});
             return;
         };
     } else {
@@ -172,7 +186,7 @@ pub fn cowCopy(
             .allocator = allocator,
             .argv = cp_args,
         }) catch {
-            logMessage(.warn, "copy failed for {s}", .{rel_path});
+            logMessage(mode, .warn, "copy failed for {s}", .{rel_path});
             return;
         };
         allocator.free(result.stdout);
@@ -181,12 +195,12 @@ pub fn cowCopy(
         switch (result.term) {
             .Exited => |code| {
                 if (code != 0) {
-                    logMessage(.warn, "copy failed for {s}", .{rel_path});
+                    logMessage(mode, .warn, "copy failed for {s}", .{rel_path});
                     return;
                 }
             },
             else => {
-                logMessage(.warn, "copy failed for {s}", .{rel_path});
+                logMessage(mode, .warn, "copy failed for {s}", .{rel_path});
                 return;
             },
         }
@@ -194,9 +208,9 @@ pub fn cowCopy(
 
     if (mode == .human) {
         if (used_cow) {
-            logMessage(.success, "copied (CoW) {s}", .{rel_path});
+            logMessage(mode, .success, "copied (CoW) {s}", .{rel_path});
         } else {
-            logMessage(.success, "copied {s}", .{rel_path});
+            logMessage(mode, .success, "copied {s}", .{rel_path});
         }
     }
 }
@@ -211,7 +225,7 @@ pub fn createSymlink(
     mode: LogMode,
 ) !void {
     if (detectUnsafeRelPath(rel_path)) |issue| {
-        logMessage(.warn, "skip symlink {s}: invalid setup path ({s})", .{ rel_path, pathIssueLabel(issue) });
+        logMessage(mode, .warn, "skip symlink {s}: invalid setup path ({s})", .{ rel_path, pathIssueLabel(issue) });
         return;
     }
 
@@ -223,7 +237,7 @@ pub fn createSymlink(
     // Check source exists
     std.fs.cwd().access(source, .{}) catch {
         if (mode == .human) {
-            logMessage(.info, "skip symlink {s}: source doesn't exist", .{rel_path});
+            logMessage(mode, .info, "skip symlink {s}: source doesn't exist", .{rel_path});
         }
         return;
     };
@@ -231,7 +245,7 @@ pub fn createSymlink(
     // Check target doesn't already exist
     if (std.fs.cwd().access(target, .{})) |_| {
         if (mode == .human) {
-            logMessage(.info, "skip symlink {s}: already exists", .{rel_path});
+            logMessage(mode, .info, "skip symlink {s}: already exists", .{rel_path});
         }
         return;
     } else |_| {}
@@ -242,12 +256,12 @@ pub fn createSymlink(
     }
 
     std.fs.symLinkAbsolute(source, target, .{}) catch {
-        logMessage(.warn, "symlink failed for {s}", .{rel_path});
+        logMessage(mode, .warn, "symlink failed for {s}", .{rel_path});
         return;
     };
 
     if (mode == .human) {
-        logMessage(.success, "symlinked {s}", .{rel_path});
+        logMessage(mode, .success, "symlinked {s}", .{rel_path});
     }
 }
 
@@ -263,7 +277,7 @@ pub fn runSetupCommands(
 
     for (commands) |cmd| {
         if (mode == .human) {
-            logMessage(.info, "running: {s}", .{cmd});
+            logMessage(mode, .info, "running: {s}", .{cmd});
         }
 
         const result = std.process.Child.run(.{
@@ -271,7 +285,7 @@ pub fn runSetupCommands(
             .argv = &.{ shell.program, shell.command_flag, cmd },
             .cwd = cwd,
         }) catch {
-            logMessage(.warn, "failed to run '{s}'", .{cmd});
+            logMessage(mode, .warn, "failed to run '{s}'", .{cmd});
             continue;
         };
         allocator.free(result.stdout);
@@ -280,11 +294,11 @@ pub fn runSetupCommands(
         switch (result.term) {
             .Exited => |code| {
                 if (code != 0) {
-                    logMessage(.warn, "'{s}' exited with code {d}", .{ cmd, code });
+                    logMessage(mode, .warn, "'{s}' exited with code {d}", .{ cmd, code });
                 }
             },
             else => {
-                logMessage(.warn, "'{s}' terminated abnormally", .{cmd});
+                logMessage(mode, .warn, "'{s}' terminated abnormally", .{cmd});
             },
         }
     }
@@ -403,6 +417,23 @@ test "setupShellForOs picks shell command for each platform" {
     try std.testing.expectEqualStrings("-c", linux_shell.command_flag);
 }
 
+test "shouldEmitLog enforces mode visibility policy" {
+    try std.testing.expect(shouldEmitLog(.human, .info));
+    try std.testing.expect(shouldEmitLog(.human, .success));
+    try std.testing.expect(shouldEmitLog(.human, .warn));
+    try std.testing.expect(shouldEmitLog(.human, .err));
+
+    try std.testing.expect(!shouldEmitLog(.machine, .info));
+    try std.testing.expect(!shouldEmitLog(.machine, .success));
+    try std.testing.expect(shouldEmitLog(.machine, .warn));
+    try std.testing.expect(shouldEmitLog(.machine, .err));
+
+    try std.testing.expect(!shouldEmitLog(.silent, .info));
+    try std.testing.expect(!shouldEmitLog(.silent, .success));
+    try std.testing.expect(!shouldEmitLog(.silent, .warn));
+    try std.testing.expect(!shouldEmitLog(.silent, .err));
+}
+
 test "runSetupCommands continues after command failure" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -415,7 +446,7 @@ test "runSetupCommands continues after command failure" {
         else => &.{ "false", "printf after-failure > marker.txt" },
     };
 
-    try runSetupCommands(std.testing.allocator, cwd, commands, .quiet);
+    try runSetupCommands(std.testing.allocator, cwd, commands, .silent);
 
     const marker_path = try std.fs.path.join(std.testing.allocator, &.{ cwd, "marker.txt" });
     defer std.testing.allocator.free(marker_path);
