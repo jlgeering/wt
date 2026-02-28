@@ -123,6 +123,18 @@ pub fn build(b: *std.Build) void {
     const run_integration_workflow_tests = b.addRunArtifact(integration_workflow_tests);
     test_step.dependOn(&run_integration_workflow_tests.step);
 
+    const integration_init_detect_test_module = b.createModule(.{
+        .root_source_file = b.path("test/integration_init_detect.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    integration_init_detect_test_module.addImport("wt_lib", wt_lib_module);
+    const integration_init_detect_tests = b.addTest(.{
+        .root_module = integration_init_detect_test_module,
+    });
+    const run_integration_init_detect_tests = b.addRunArtifact(integration_init_detect_tests);
+    test_step.dependOn(&run_integration_init_detect_tests.step);
+
     const integration_shell_init_test_module = b.createModule(.{
         .root_source_file = b.path("test/integration_shell_init.zig"),
         .target = target,
@@ -140,6 +152,7 @@ pub fn build(b: *std.Build) void {
     const integration_step = b.step("test-integration", "Run integration tests");
     integration_step.dependOn(&run_integration_lib_tests.step);
     integration_step.dependOn(&run_integration_workflow_tests.step);
+    integration_step.dependOn(&run_integration_init_detect_tests.step);
     integration_step.dependOn(&run_integration_shell_init_tests.step);
 
     const release_tool_test_module = b.createModule(.{
