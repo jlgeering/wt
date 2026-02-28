@@ -106,27 +106,32 @@ wt --version
 
 ## Contributor Workflow
 
-Use `mise` tasks for local development:
+Use `mise` tasks for common local development actions:
 
 ```bash
 mise install
-mise x -- zig version
 mise run build
 mise run test
 mise run lint
 mise run format
 mise run check
-mise x -- zig build run -- --help
 mise run build:release
 mise run build:all
 mise run clean
 ```
 
+For interactive shell usage, run Zig directly:
+
+```bash
+zig version
+zig build run -- --help
+```
+
 Run a filtered subset of tests while preserving `build.zig` module wiring:
 
 ```bash
-mise x -- zig build test -- --test-filter "integration: PTY no-arg shell-init picker cancel works"
-mise x -- zig build test -Dtest_filter="release tool: semver validation"
+zig build test -- --test-filter "integration: PTY no-arg shell-init picker cancel works"
+zig build test -Dtest_filter="release tool: semver validation"
 ```
 
 ## Documentation
