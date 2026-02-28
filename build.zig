@@ -106,7 +106,7 @@ fn collectTestFilters(b: *std.Build) []const []const u8 {
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const app_version = b.option([]const u8, "app_version", "Application version string") orelse "0.2.1";
+    const app_version = b.option([]const u8, "app_version", "Application version string") orelse "0.3.0";
     const git_sha = resolveGitSha(b);
     const test_filters = collectTestFilters(b);
 

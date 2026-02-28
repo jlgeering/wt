@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-02-28
+
+### Added
+
+- Expanded `wt init` project detection to be repo-wide and cwd-invariant, with improved support for nested repositories and subfolder workflows.
+- Added default symlink setup recommendations for local `mise` and Claude config paths in `wt init`.
+
+### Fixed
+
+- Fixed `wt init` setup execution on Windows by removing shell-wrapper assumptions and adding copy-path support.
+- Improved `wt init` review reliability by handling cancel flows (`Esc`/`Ctrl-C`) and detecting ignored local files in discovered roots.
+- Hardened `wt shell-init` Nushell picker handling to avoid unsafe TTY/stderr interactions in interactive selection paths.
+
+### Changed
+
+- Updated the release pipeline interface to require explicit version input (`mise run release -- <X.Y.Z>`) and removed file-based version handoff.
+- Reworked `wt init` planning internals around `init_scan` and expanded integration/runtime test coverage for setup and shell-init picker flows.
+
 ## [0.2.1] - 2026-02-28
 
 ### Fixed
@@ -52,6 +70,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Core worktree management commands: `list`, `new`, `rm`, and `init`.
 - Shell integration support via `wt shell-init` for `zsh`, `bash`, `fish`, and `nu`.
 
+[0.3.0]: https://github.com/jlgeering/wt/releases/tag/v0.3.0
 [0.2.1]: https://github.com/jlgeering/wt/releases/tag/v0.2.1
 [0.2.0]: https://github.com/jlgeering/wt/releases/tag/v0.2.0
 [0.1.1]: https://github.com/jlgeering/wt/releases/tag/v0.1.1
