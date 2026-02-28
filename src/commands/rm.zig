@@ -583,7 +583,7 @@ fn confirmUnsafeRemoval(
         try stdout.print("- dirty worktree: {d} modified, {d} untracked\n", .{ modified, untracked });
     }
     if (has_local_commits) {
-        try stdout.writeAll("- worktree has commits not in main checkout\n");
+        try stdout.writeAll("- worktree has commits not merged to primary worktree\n");
     }
     while (true) {
         try stdout.print("Remove anyway? [y/N]: ", .{});
