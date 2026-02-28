@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-02-28
+
+### Added
+
+- Unified shell completion candidate generation through internal command metadata so completions stay in sync with the CLI surface.
+- Expanded shell integration and parity test coverage for completion behavior and generated shell docs.
+
+### Fixed
+
+- Corrected multiple shell completion edge cases, including `new`/`add` positional completion in bash and support for both `nu` and `nushell` aliases.
+- Improved safety and UX behavior in interactive paths, including `Ctrl-C` handling in `wt init` and avoiding `/dev/tty` stderr redirection in shell wrappers.
+- Hardened worktree safety checks by detecting the current worktree from nested directories, rejecting unsafe setup paths, and preventing non-worktree path collisions.
+
+### Changed
+
+- Updated shell-init implementation to use dedicated shell emitters, improving maintainability and parity across `zsh`, `bash`, `fish`, and `nu`.
+
 ## [0.1.1] - 2026-02-25
 
 ### Fixed
@@ -26,5 +43,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Core worktree management commands: `list`, `new`, `rm`, and `init`.
 - Shell integration support via `wt shell-init` for `zsh`, `bash`, `fish`, and `nu`.
 
+[0.2.0]: https://github.com/jlgeering/wt/releases/tag/v0.2.0
 [0.1.1]: https://github.com/jlgeering/wt/releases/tag/v0.1.1
 [0.1.0]: https://github.com/jlgeering/wt/releases/tag/v0.1.0

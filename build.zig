@@ -31,7 +31,7 @@ fn addHelpSmokeCheck(
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const app_version = b.option([]const u8, "app_version", "Application version string") orelse "0.1.1";
+    const app_version = b.option([]const u8, "app_version", "Application version string") orelse "0.2.0";
     const git_sha = resolveGitSha(b);
 
     // Dependencies
