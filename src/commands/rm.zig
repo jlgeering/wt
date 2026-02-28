@@ -552,15 +552,15 @@ fn inspectCandidate(
     const has_local_commits = blk: {
         if (unmerged == 0) break :blk false;
 
-        // Prefer patch-unique detection so rebased/cherry-picked equivalents
+        // Prefer non-equivalent local commit detection so rebased/cherry-picked equivalents
         // do not count as local-only work in rm safety checks.
-        const unique_local = git.countPatchUniqueCommits(
+        const non_equivalent_local = git.countNonEquivalentLocalCommits(
             allocator,
             main_path,
             base_ref,
             localCommitReference(wt),
         ) catch unmerged;
-        break :blk unique_local > 0;
+        break :blk non_equivalent_local > 0;
     };
 
     const has_dirty = status.modified > 0 or status.untracked > 0;

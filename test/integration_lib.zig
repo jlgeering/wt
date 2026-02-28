@@ -99,7 +99,7 @@ test "integration: count unmerged commits for feature branch" {
     try std.testing.expectEqual(@as(usize, 0), unmerged_after_merge);
 }
 
-test "integration: patch-equivalent commits are not treated as unique local commits" {
+test "integration: patch-equivalent commits are not treated as non-equivalent local commits" {
     const allocator = std.testing.allocator;
     const repo_path = try helpers.createTestRepo(allocator);
     defer {
@@ -153,16 +153,16 @@ test "integration: patch-equivalent commits are not treated as unique local comm
     );
     try std.testing.expectEqual(@as(usize, 1), unmerged);
 
-    const patch_unique = try git.countPatchUniqueCommits(
+    const non_equivalent_local = try git.countNonEquivalentLocalCommits(
         allocator,
         repo_path,
         "HEAD",
         "feat-cherry-equivalent-int",
     );
-    try std.testing.expectEqual(@as(usize, 0), patch_unique);
+    try std.testing.expectEqual(@as(usize, 0), non_equivalent_local);
 }
 
-test "integration: merge-only local commit remains detectable as unique history" {
+test "integration: merge-only local commit remains detectable as non-equivalent local history" {
     const allocator = std.testing.allocator;
     const repo_path = try helpers.createTestRepo(allocator);
     defer {
@@ -211,13 +211,13 @@ test "integration: merge-only local commit remains detectable as unique history"
     );
     try std.testing.expectEqual(@as(usize, 1), unmerged);
 
-    const patch_unique = try git.countPatchUniqueCommits(
+    const non_equivalent_local = try git.countNonEquivalentLocalCommits(
         allocator,
         repo_path,
         "HEAD",
         "feat-merge-only-int",
     );
-    try std.testing.expectEqual(@as(usize, 1), patch_unique);
+    try std.testing.expectEqual(@as(usize, 1), non_equivalent_local);
 }
 
 test "integration: ahead and behind counts diverge after commits on both branches" {

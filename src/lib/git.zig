@@ -132,9 +132,9 @@ pub fn countUnmergedCommits(
     return parseCountOutput(output);
 }
 
-/// Count commits in `branch_ref` that are not patch-equivalent to `base_ref`.
-/// Uses `--cherry-pick` to ignore equivalent patches with different SHAs.
-pub fn countPatchUniqueCommits(
+/// Count local commits in `branch_ref` whose patches are not equivalent to `base_ref`.
+/// Uses `rev-list --right-only --cherry-pick` to ignore equivalent patches with different SHAs.
+pub fn countNonEquivalentLocalCommits(
     allocator: std.mem.Allocator,
     cwd: ?[]const u8,
     base_ref: []const u8,
