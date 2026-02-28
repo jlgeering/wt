@@ -505,7 +505,7 @@ test "resolveCurrentWorktreeRoot resolves repo root from nested directory" {
     const repo_root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
     defer std.testing.allocator.free(repo_root);
 
-    const init_output = try git.runGit(std.testing.allocator, repo_root, &.{ "init" });
+    const init_output = try git.runGit(std.testing.allocator, repo_root, &.{"init"});
     defer std.testing.allocator.free(init_output);
 
     try tmp.dir.makePath("nested/deep");
