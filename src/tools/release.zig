@@ -329,7 +329,9 @@ fn packageArchives(allocator: Allocator, version: []const u8, build_root: []cons
         defer allocator.free(bin_dir);
 
         if (archive.use_zip) {
-            try runNoCaptureChecked(allocator, bin_dir, &.{ "zip", "-q", output_path, archive.bin_name });
+            const bin_path = try std.fs.path.join(allocator, &.{ bin_dir, archive.bin_name });
+            defer allocator.free(bin_path);
+            try runNoCaptureChecked(allocator, null, &.{ "zip", "-q", "-j", output_path, bin_path });
         } else {
             try runNoCaptureChecked(allocator, null, &.{ "tar", "-C", bin_dir, "-czf", output_path, archive.bin_name });
         }

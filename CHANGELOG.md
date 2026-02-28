@@ -17,6 +17,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Corrected multiple shell completion edge cases, including `new`/`add` positional completion in bash and support for both `nu` and `nushell` aliases.
 - Improved safety and UX behavior in interactive paths, including `Ctrl-C` handling in `wt init` and avoiding `/dev/tty` stderr redirection in shell wrappers.
 - Hardened worktree safety checks by detecting the current worktree from nested directories, rejecting unsafe setup paths, and preventing non-worktree path collisions.
+- Fixed Windows release archive packaging in the automated release pipeline so `.zip` artifacts are emitted reliably from repo-root staging paths.
 
 ### Changed
 
