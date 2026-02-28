@@ -23,6 +23,7 @@ const runtime_shells = [_]ShellRuntime{
 const pty_runtime_shells = [_]ShellRuntime{
     .{ .name = "zsh", .bin = "zsh" },
     .{ .name = "bash", .bin = "bash" },
+    .{ .name = "fish", .bin = "fish" },
     .{ .name = "nu", .bin = "nu" },
 };
 
@@ -769,7 +770,7 @@ test "integration: non-interactive bare wt passes through without picker for zsh
     }
 }
 
-test "integration: PTY no-arg shell-init picker cancel works for zsh/bash/nu" {
+test "integration: PTY no-arg shell-init picker cancel works for zsh/bash/fish/nu" {
     const allocator = std.testing.allocator;
     const rel_subdir = "sub/inner";
     const cancel_input = "q\n";
@@ -821,6 +822,14 @@ test "integration: PTY no-arg shell-init picker cancel works for zsh/bash/nu" {
     var ran_any_shell = false;
 
     for (pty_runtime_shells) |shell| {
+        if (script_flavor == .bsd and std.mem.eql(u8, shell.name, "fish")) {
+            std.debug.print(
+                "SKIP fish PTY picker test: BSD `script` does not reliably deliver cancel input to fish\n",
+                .{},
+            );
+            continue;
+        }
+
         if (!shellExists(allocator, shell.bin)) {
             std.debug.print("SKIP {s} PTY picker test: shell not installed\n", .{shell.name});
             continue;
@@ -860,7 +869,7 @@ test "integration: PTY no-arg shell-init picker cancel works for zsh/bash/nu" {
     }
 
     if (!ran_any_shell) {
-        std.debug.print("SKIP PTY picker test: zsh/bash/nu not installed\n", .{});
+        std.debug.print("SKIP PTY picker test: zsh/bash/fish/nu not installed\n", .{});
     }
 }
 

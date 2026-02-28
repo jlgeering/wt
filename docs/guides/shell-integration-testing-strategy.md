@@ -48,7 +48,7 @@ File: `test/integration_shell_init.zig`
 
 File: `test/integration_shell_init.zig`
 
-- PTY cancel-path coverage for bare `wt` picker across `zsh`/`bash`/`nu`.
+- PTY cancel-path coverage for bare `wt` picker across `zsh`/`bash`/`fish`/`nu` when PTY prerequisites are met.
 - Confirms picker prompt visibility and non-destructive cancellation (cwd unchanged).
 
 ## Optional / Environment-Dependent Coverage
@@ -57,7 +57,7 @@ These tests are in the baseline suite but may skip based on host setup:
 
 1. Runtime shell tests skip per shell if that shell binary is not installed.
 2. PTY coverage skips when `script` is unavailable.
-3. PTY coverage currently runs for `zsh`/`bash`/`nu` only (not fish).
+3. Fish PTY picker cancel coverage skips on hosts with BSD `script` because cancel-input delivery is not reliable there.
 
 ## Validation Commands
 
@@ -74,5 +74,4 @@ Optional local checks:
 
 ## Remaining Gaps / Next Beads
 
-1. Fish PTY no-arg picker parity is not covered yet. Follow-up: `wt-lf2`.
-2. Nushell PTY fallback runtime branch (`err> /dev/tty` failure) is only template-asserted today, not runtime-asserted. Follow-up: `wt-3v5`.
+1. Nushell PTY fallback runtime branch (`err> /dev/tty` failure) is only template-asserted today, not runtime-asserted. Follow-up: `wt-3v5`.
