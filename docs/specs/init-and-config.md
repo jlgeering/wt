@@ -62,6 +62,7 @@ commands = ["mise trust"]
 
 Setup semantics:
 
+- Setup executes in this order: `[copy].paths` first, then `[symlink].paths`, then `[run].commands`.
 - `[copy].paths`: copy paths from main repo to the new worktree.
 - macOS uses `cp -cR` and Linux uses `cp -R --reflink=auto` to preserve CoW/reflink behavior where available.
 - Windows uses native filesystem copy APIs (no `cp` dependency).
@@ -70,6 +71,7 @@ Setup semantics:
 - `[run].commands`: run shell commands in the new worktree after creation.
 - Command runner is platform-specific: `sh -c` on non-Windows, `cmd.exe /C` on Windows.
 - Run command strings must be valid for the host shell (`sh` syntax on Unix-like systems, `cmd.exe` syntax on Windows).
+- Run command stdout/stderr are captured internally and not streamed; users see setup status lines and warnings/errors only.
 - Missing source paths are skipped with `skip copy ...: source doesn't exist` or `skip symlink ...: source doesn't exist`.
 - Existing destination paths are skipped with `skip copy ...: already exists` or `skip symlink ...: already exists`.
 - Failed run commands warn and continue to the next command.
