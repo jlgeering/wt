@@ -60,7 +60,8 @@ const nu_command_choices = buildNuCommandChoices();
 const nu_shell_name_choices = buildNuShellNameChoices();
 
 // Shared behavior contract across all shell-init wrappers:
-// - `wt` with no args invokes `wt __pick-worktree` and conditionally `cd`s.
+// - `wt` with no args invokes `wt __pick-worktree` only in interactive sessions.
+//   In non-interactive sessions it passes through to the real binary.
 // - `wt new|add` invokes `wt __new`, captures stdout path, and conditionally `cd`s.
 // - both flows preserve repo-relative subdirectory when present, otherwise fall back to root.
 // - wrappers report entered worktree/root and optional subdirectory after successful `cd`.
@@ -97,6 +98,11 @@ fn buildPosixWrapperBody() []const u8 {
     \\    }
     \\
     \\    if [ "$#" -eq 0 ]; then
+    \\        if [ ! -t 0 ] || [ ! -t 2 ]; then
+    \\            command wt
+    \\            return $?
+    \\        fi
+    \\
     \\        local relative_subdir
     \\        relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
     \\        relative_subdir="${relative_subdir%/}"
@@ -447,6 +453,11 @@ fn emitFishInit() []const u8 {
     \\    end
     \\
     \\    if test (count $argv) -eq 0
+    \\        if not isatty stdin; or not isatty stderr
+    \\            command wt $argv
+    \\            return $status
+    \\        end
+    \\
     \\        set -l relative_subdir (command git rev-parse --show-prefix 2>/dev/null)
     \\        set relative_subdir (string trim -c / -- "$relative_subdir")
     \\        set -l selected_path (command wt __pick-worktree)
@@ -642,6 +653,11 @@ fn emitNuInit() []const u8 {
     \\@complete 'nu-complete wt'
     \\def --env --wrapped wt [...args] {
     \\    if ($args | is-empty) {
+    \\        if not (is-terminal --stdin) or not (is-terminal --stderr) {
+    \\            ^wt
+    \\            return
+    \\        }
+    \\
     \\        let relative_subdir = (__wt_relative_subdir)
     \\        let picked = (try {
     \\            ^wt __pick-worktree err> /dev/tty | complete
@@ -785,6 +801,7 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "[ \"$arg\" = \"--help\" ]") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt \"__new\" \"${@:2}\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "2>/dev/tty") == null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "if [ ! -t 0 ] || [ ! -t 2 ]; then") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt __pick-worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_report_location()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "printf \"\\nEntered worktree: %s\\n\"") != null);
@@ -809,6 +826,7 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "[ \"$arg\" = \"--help\" ]") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "command wt \"__new\" \"${@:2}\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "2>/dev/tty") == null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "if [ ! -t 0 ] || [ ! -t 2 ]; then") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "wt __pick-worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_report_location()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "printf \"\\nEntered worktree: %s\\n\"") != null);
@@ -850,6 +868,7 @@ test "fish init contains function definition and completion" {
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_seen_subcommand_from shell-init; and test (count (commandline -opc)) -eq 2\" -a \"zsh bash fish nu nushell\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "function wt --wraps wt --description 'wt shell integration'") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "string match -qr '^-' -- \"$first\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "if not isatty stdin; or not isatty stderr") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "command wt __pick-worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "__wt_report_location \"$selected_path\" \"$target_dir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "__wt_report_location \"$output\" \"$target_dir\"") != null);
@@ -880,6 +899,7 @@ test "nu init contains wrapper and completion definitions" {
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __complete-rm-branches err> /dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_shell_names\" []") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "\"zsh\" \"bash\" \"fish\" \"nu\" \"nushell\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "if not (is-terminal --stdin) or not (is-terminal --stderr)") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "let picked = (try {") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __pick-worktree err> /dev/tty | complete") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "} catch {") != null);

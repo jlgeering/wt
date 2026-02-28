@@ -51,6 +51,12 @@ const stub_wt_script =
     \\    fi
     \\    ;;
     \\  *)
+    \\    if [ -n "${WT_STUB_DEFAULT_STDERR:-}" ]; then
+    \\      printf '%s\n' "$WT_STUB_DEFAULT_STDERR" >&2
+    \\    fi
+    \\    if [ -n "${WT_STUB_DEFAULT_EXIT:-}" ]; then
+    \\      exit "$WT_STUB_DEFAULT_EXIT"
+    \\    fi
     \\    ;;
     \\esac
 ;
@@ -273,6 +279,27 @@ fn buildShellProgram(
     );
 }
 
+fn buildNoArgStatusProgram(
+    allocator: std.mem.Allocator,
+    shell: ShellRuntime,
+    init_script_path: []const u8,
+) ![]u8 {
+    if (std.mem.eql(u8, shell.name, "nu")) {
+        return std.fmt.allocPrint(
+            allocator,
+            "source \"{s}\"\ntry {{ wt }} catch {{ }}\nprint ('WT_STATUS=' + ($env.LAST_EXIT_CODE | into string))\nprint ('PWD=' + $env.PWD)\n",
+            .{init_script_path},
+        );
+    }
+
+    const prefix = if (std.mem.eql(u8, shell.name, "zsh")) "compdef() { :; }\n" else "";
+    return std.fmt.allocPrint(
+        allocator,
+        "{s}source \"{s}\"\nwt\nwt_status=$?\nprintf 'WT_STATUS=%s\\n' \"$wt_status\"\nprintf 'PWD=%s\\n' \"$PWD\"\n",
+        .{ prefix, init_script_path },
+    );
+}
+
 fn expectExitCode(result: std.process.Child.RunResult, expected_code: u8) !void {
     switch (result.term) {
         .Exited => |code| try std.testing.expectEqual(expected_code, code),
@@ -298,7 +325,7 @@ test "integration: shell-init snippets carry shared parity markers across zsh/ba
     try std.testing.expectEqualStrings(nu_script, try requireScript("nushell"));
 }
 
-test "integration: zsh/bash/nu wrapper runtime parity for picker and new/add flows" {
+test "integration: zsh/bash/nu wrapper runtime parity for new/add flows" {
     const allocator = std.testing.allocator;
     const rel_subdir = "sub/inner";
 
@@ -329,21 +356,6 @@ test "integration: zsh/bash/nu wrapper runtime parity for picker and new/add flo
     const repo_subdir = try std.fs.path.join(allocator, &.{ repo_path, rel_subdir });
     defer allocator.free(repo_subdir);
     try std.fs.cwd().makePath(repo_subdir);
-
-    const selected_with_subdir = try helpers.createTempDir(allocator);
-    defer {
-        helpers.cleanupPath(allocator, selected_with_subdir);
-        allocator.free(selected_with_subdir);
-    }
-    const selected_subdir = try std.fs.path.join(allocator, &.{ selected_with_subdir, rel_subdir });
-    defer allocator.free(selected_subdir);
-    try std.fs.cwd().makePath(selected_subdir);
-
-    const selected_root_only = try helpers.createTempDir(allocator);
-    defer {
-        helpers.cleanupPath(allocator, selected_root_only);
-        allocator.free(selected_root_only);
-    }
 
     const new_with_subdir = try helpers.createTempDir(allocator);
     defer {
@@ -377,72 +389,6 @@ test "integration: zsh/bash/nu wrapper runtime parity for picker and new/add flo
         defer allocator.free(init_script_path);
         try helpers.writeFile(init_script_path, init_script);
 
-        const noarg_preserve_log_name = try std.fmt.allocPrint(allocator, "{s}.noarg-preserve.log", .{shell.name});
-        defer allocator.free(noarg_preserve_log_name);
-        const log_noarg_preserve = try std.fs.path.join(allocator, &.{ temp_root, noarg_preserve_log_name });
-        defer allocator.free(log_noarg_preserve);
-        try helpers.writeFile(log_noarg_preserve, "");
-        const noarg_preserve = try runShellScenario(
-            allocator,
-            shell,
-            init_script_path,
-            repo_subdir,
-            stub_bin_dir,
-            "",
-            selected_with_subdir,
-            null,
-            log_noarg_preserve,
-        );
-        defer allocator.free(noarg_preserve.stdout);
-        defer allocator.free(noarg_preserve.stderr);
-        try expectExitCode(noarg_preserve, 0);
-
-        const expected_selected_preserve_pwd = try std.fs.path.join(allocator, &.{ selected_with_subdir, rel_subdir });
-        defer allocator.free(expected_selected_preserve_pwd);
-        const selected_report = try std.fmt.allocPrint(allocator, "Entered worktree: {s}", .{selected_with_subdir});
-        defer allocator.free(selected_report);
-        const subdir_report = try std.fmt.allocPrint(allocator, "Subdirectory: {s}", .{rel_subdir});
-        defer allocator.free(subdir_report);
-        const selected_pwd_marker = try std.fmt.allocPrint(allocator, "PWD={s}", .{expected_selected_preserve_pwd});
-        defer allocator.free(selected_pwd_marker);
-        try std.testing.expect(std.mem.indexOf(u8, noarg_preserve.stdout, selected_report) != null);
-        try std.testing.expect(std.mem.indexOf(u8, noarg_preserve.stdout, subdir_report) != null);
-        try std.testing.expect(std.mem.indexOf(u8, noarg_preserve.stdout, selected_pwd_marker) != null);
-        const noarg_log = try helpers.readFileAlloc(allocator, log_noarg_preserve);
-        defer allocator.free(noarg_log);
-        try std.testing.expect(std.mem.indexOf(u8, noarg_log, "__pick-worktree") != null);
-
-        const noarg_fallback_log_name = try std.fmt.allocPrint(allocator, "{s}.noarg-fallback.log", .{shell.name});
-        defer allocator.free(noarg_fallback_log_name);
-        const log_noarg_fallback = try std.fs.path.join(allocator, &.{ temp_root, noarg_fallback_log_name });
-        defer allocator.free(log_noarg_fallback);
-        try helpers.writeFile(log_noarg_fallback, "");
-        const noarg_fallback = try runShellScenario(
-            allocator,
-            shell,
-            init_script_path,
-            repo_subdir,
-            stub_bin_dir,
-            "",
-            selected_root_only,
-            null,
-            log_noarg_fallback,
-        );
-        defer allocator.free(noarg_fallback.stdout);
-        defer allocator.free(noarg_fallback.stderr);
-        try expectExitCode(noarg_fallback, 0);
-
-        const fallback_selected_msg = try std.fmt.allocPrint(
-            allocator,
-            "Subdirectory missing in selected worktree, using root: {s}",
-            .{selected_root_only},
-        );
-        defer allocator.free(fallback_selected_msg);
-        const selected_root_pwd_marker = try std.fmt.allocPrint(allocator, "PWD={s}", .{selected_root_only});
-        defer allocator.free(selected_root_pwd_marker);
-        try std.testing.expect(std.mem.indexOf(u8, noarg_fallback.stdout, fallback_selected_msg) != null);
-        try std.testing.expect(std.mem.indexOf(u8, noarg_fallback.stdout, selected_root_pwd_marker) != null);
-
         const new_log_name = try std.fmt.allocPrint(allocator, "{s}.new.log", .{shell.name});
         defer allocator.free(new_log_name);
         const log_new = try std.fs.path.join(allocator, &.{ temp_root, new_log_name });
@@ -467,6 +413,8 @@ test "integration: zsh/bash/nu wrapper runtime parity for picker and new/add flo
         defer allocator.free(expected_new_preserve_pwd);
         const new_report = try std.fmt.allocPrint(allocator, "Entered worktree: {s}", .{new_with_subdir});
         defer allocator.free(new_report);
+        const subdir_report = try std.fmt.allocPrint(allocator, "Subdirectory: {s}", .{rel_subdir});
+        defer allocator.free(subdir_report);
         const new_pwd_marker = try std.fmt.allocPrint(allocator, "PWD={s}", .{expected_new_preserve_pwd});
         defer allocator.free(new_pwd_marker);
         try std.testing.expect(std.mem.indexOf(u8, new_preserve.stdout, new_report) != null);
@@ -513,6 +461,110 @@ test "integration: zsh/bash/nu wrapper runtime parity for picker and new/add flo
 
     if (!ran_any_shell) {
         std.debug.print("SKIP runtime parity checks: zsh/bash/nu not installed\n", .{});
+    }
+}
+
+test "integration: non-interactive bare wt passes through without picker for zsh/bash/nu" {
+    const allocator = std.testing.allocator;
+    const rel_subdir = "sub/inner";
+    const passthrough_error = "passthrough from stub";
+    const passthrough_exit = "23";
+
+    const temp_root = try helpers.createTempDir(allocator);
+    defer {
+        helpers.cleanupPath(allocator, temp_root);
+        allocator.free(temp_root);
+    }
+
+    const stub_bin_dir = try std.fs.path.join(allocator, &.{ temp_root, "bin" });
+    defer allocator.free(stub_bin_dir);
+    try std.fs.cwd().makePath(stub_bin_dir);
+
+    const stub_wt_path = try std.fs.path.join(allocator, &.{ stub_bin_dir, "wt" });
+    defer allocator.free(stub_wt_path);
+    try helpers.writeFile(stub_wt_path, stub_wt_script);
+    {
+        const chmod_stdout = try helpers.runChecked(allocator, null, &.{ "chmod", "+x", stub_wt_path });
+        allocator.free(chmod_stdout);
+    }
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+    const repo_subdir = try std.fs.path.join(allocator, &.{ repo_path, rel_subdir });
+    defer allocator.free(repo_subdir);
+    try std.fs.cwd().makePath(repo_subdir);
+
+    var ran_any_shell = false;
+
+    for (runtime_shells) |shell| {
+        if (!shellExists(allocator, shell.bin)) {
+            std.debug.print("SKIP {s} non-interactive pass-through test: shell not installed\n", .{shell.name});
+            continue;
+        }
+
+        ran_any_shell = true;
+
+        const init_script = try requireScript(shell.name);
+        const init_script_name = try std.fmt.allocPrint(allocator, "{s}.noarg.pass.init", .{shell.name});
+        defer allocator.free(init_script_name);
+        const init_script_path = try std.fs.path.join(allocator, &.{ temp_root, init_script_name });
+        defer allocator.free(init_script_path);
+        try helpers.writeFile(init_script_path, init_script);
+
+        const log_name = try std.fmt.allocPrint(allocator, "{s}.noarg.pass.log", .{shell.name});
+        defer allocator.free(log_name);
+        const log_path = try std.fs.path.join(allocator, &.{ temp_root, log_name });
+        defer allocator.free(log_path);
+        try helpers.writeFile(log_path, "");
+
+        var env_map = try std.process.getEnvMap(allocator);
+        defer env_map.deinit();
+
+        const existing_path = env_map.get("PATH") orelse "";
+        const full_path = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ stub_bin_dir, existing_path });
+        defer allocator.free(full_path);
+
+        try env_map.put("PATH", full_path);
+        try env_map.put("WT_STUB_LOG", log_path);
+        try env_map.put("WT_STUB_DEFAULT_STDERR", passthrough_error);
+        try env_map.put("WT_STUB_DEFAULT_EXIT", passthrough_exit);
+
+        const shell_program = try buildNoArgStatusProgram(allocator, shell, init_script_path);
+        defer allocator.free(shell_program);
+
+        const result = try std.process.Child.run(.{
+            .allocator = allocator,
+            .argv = &.{ shell.bin, "-c", shell_program },
+            .cwd = repo_subdir,
+            .env_map = &env_map,
+            .max_output_bytes = 1024 * 1024,
+        });
+        defer allocator.free(result.stdout);
+        defer allocator.free(result.stderr);
+        try expectExitCode(result, 0);
+
+        const status_marker = try std.fmt.allocPrint(allocator, "WT_STATUS={s}", .{passthrough_exit});
+        defer allocator.free(status_marker);
+        const pwd_marker = try std.fmt.allocPrint(allocator, "PWD={s}", .{repo_subdir});
+        defer allocator.free(pwd_marker);
+        try std.testing.expect(std.mem.indexOf(u8, result.stdout, status_marker) != null);
+        try std.testing.expect(std.mem.indexOf(u8, result.stdout, pwd_marker) != null);
+        try std.testing.expect(std.mem.indexOf(u8, result.stdout, "Entered worktree:") == null);
+
+        const combined_output = try std.fmt.allocPrint(allocator, "{s}\n{s}", .{ result.stdout, result.stderr });
+        defer allocator.free(combined_output);
+        try std.testing.expect(std.mem.indexOf(u8, combined_output, passthrough_error) != null);
+
+        const log_data = try helpers.readFileAlloc(allocator, log_path);
+        defer allocator.free(log_data);
+        try std.testing.expect(std.mem.indexOf(u8, log_data, "__pick-worktree") == null);
+    }
+
+    if (!ran_any_shell) {
+        std.debug.print("SKIP non-interactive pass-through test: zsh/bash/nu not installed\n", .{});
     }
 }
 
@@ -611,12 +663,12 @@ test "integration: PTY no-arg shell-init picker cancel works for zsh/bash/nu" {
     }
 }
 
-test "integration: nushell no-arg picker failure preserves LAST_EXIT_CODE and cwd" {
+test "integration: nushell non-interactive bare wt passthrough preserves LAST_EXIT_CODE and cwd" {
     const allocator = std.testing.allocator;
     const rel_subdir = "sub/inner";
 
     if (!shellExists(allocator, "nu")) {
-        std.debug.print("SKIP nu picker failure parity test: shell not installed\n", .{});
+        std.debug.print("SKIP nu non-interactive pass-through test: shell not installed\n", .{});
         return;
     }
 
@@ -648,14 +700,14 @@ test "integration: nushell no-arg picker failure preserves LAST_EXIT_CODE and cw
     try std.fs.cwd().makePath(repo_subdir);
 
     const init_script = try requireScript("nu");
-    const init_script_path = try std.fs.path.join(allocator, &.{ temp_root, "nu.failure.init" });
+    const init_script_path = try std.fs.path.join(allocator, &.{ temp_root, "nu.noarg.pass.init" });
     defer allocator.free(init_script_path);
     try helpers.writeFile(init_script_path, init_script);
 
-    const picker_error = "pick failure from stub";
-    const picker_exit_code = "23";
+    const passthrough_error = "passthrough from stub";
+    const passthrough_exit_code = "23";
 
-    const log_path = try std.fs.path.join(allocator, &.{ temp_root, "nu.noarg.failure.log" });
+    const log_path = try std.fs.path.join(allocator, &.{ temp_root, "nu.noarg.pass.log" });
     defer allocator.free(log_path);
     try helpers.writeFile(log_path, "");
 
@@ -668,12 +720,12 @@ test "integration: nushell no-arg picker failure preserves LAST_EXIT_CODE and cw
 
     try env_map.put("PATH", full_path);
     try env_map.put("WT_STUB_LOG", log_path);
-    try env_map.put("WT_STUB_PICK_STDERR", picker_error);
-    try env_map.put("WT_STUB_PICK_EXIT", picker_exit_code);
+    try env_map.put("WT_STUB_DEFAULT_STDERR", passthrough_error);
+    try env_map.put("WT_STUB_DEFAULT_EXIT", passthrough_exit_code);
 
     const shell_program = try std.fmt.allocPrint(
         allocator,
-        "source \"{s}\"\nwt\nprint ('LAST_EXIT_CODE=' + ($env.LAST_EXIT_CODE | into string))\nprint ('PWD=' + $env.PWD)\n",
+        "source \"{s}\"\ntry {{ wt }} catch {{ }}\nprint ('LAST_EXIT_CODE=' + ($env.LAST_EXIT_CODE | into string))\nprint ('PWD=' + $env.PWD)\n",
         .{init_script_path},
     );
     defer allocator.free(shell_program);
@@ -697,9 +749,9 @@ test "integration: nushell no-arg picker failure preserves LAST_EXIT_CODE and cw
 
     const combined_output = try std.fmt.allocPrint(allocator, "{s}\n{s}", .{ result.stdout, result.stderr });
     defer allocator.free(combined_output);
-    try std.testing.expect(std.mem.indexOf(u8, combined_output, picker_error) != null);
+    try std.testing.expect(std.mem.indexOf(u8, combined_output, passthrough_error) != null);
 
     const log_data = try helpers.readFileAlloc(allocator, log_path);
     defer allocator.free(log_data);
-    try std.testing.expect(std.mem.indexOf(u8, log_data, "__pick-worktree") != null);
+    try std.testing.expect(std.mem.indexOf(u8, log_data, "__pick-worktree") == null);
 }

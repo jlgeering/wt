@@ -1,138 +1,65 @@
 # Shell Integration Testing Strategy
 
-This guide documents practical ways to test `wt shell-init` behavior in both automated and local workflows.
+This guide documents the baseline `wt shell-init` test strategy used in this repo.
 
-Scope: shell wrapper behavior for `zsh` and `bash` (with notes for extending to `fish` and `nu`).
+Scope covers generated wrappers for `zsh`, `bash`, `fish`, and `nu` (`nushell` alias), with runtime integration currently exercised for `zsh`, `bash`, and `nu`.
 
-## Behaviors To Validate
+## Contract To Validate
 
-Core behavior to verify:
+1. `wt new|add` wrapper flow:
+   - calls `__new`
+   - preserves repo-relative subdirectory when present
+   - falls back to worktree root when subdirectory is missing
+2. Bare `wt` flow:
+   - interactive sessions run picker flow
+   - non-interactive sessions pass through to the real binary
+3. Wrapper pass-through:
+   - non-intercepted commands invoke the real `wt`
+4. Stream/status behavior:
+   - shell-specific stderr handling remains visible to users
+   - exit/status semantics are preserved for wrapped and pass-through paths
 
-1. `wt new|add` wrapper captures machine output (`wt __new`) correctly.
-2. Wrapper changes directory (`cd`) only when the returned path exists.
-3. Wrapper preserves error streams so users still see failures and warnings.
-4. No-arg `wt` path (picker workflow) remains functional.
-5. Non-intercepted subcommands pass through unchanged.
+## Current Automated Coverage
 
-## Candidate Approaches
+### 1) Unit-level template assertions
 
-### 1) Unit-level string assertions (already in place)
+File: `src/commands/shell_init.zig`
 
-What it checks:
+- Verifies emitted snippets contain required wrapper branches and completion definitions.
+- Locks shell-specific adapter details (including Nushell picker stderr/TTY handling).
 
-- Generated shell-init snippets contain expected branches/functions/commands.
-- Completion snippets include expected command and flag candidates.
+### 2) Real-shell non-PTY integration tests
 
-Current status:
+File: `test/integration_shell_init.zig`
 
-- This repo already has many string-level tests in `src/commands/shell_init.zig`.
+- Runtime parity for `zsh`/`bash`/`nu` `new|add` auto-`cd` behavior.
+- Non-interactive bare `wt` pass-through checks for `zsh`/`bash`/`nu`:
+  - no picker invocation
+  - unchanged working directory
+  - passthrough status visibility
 
-Pros:
+### 3) PTY integration for interactive picker
 
-- Fast and stable.
-- Easy to maintain.
-- Good for regressions in emitted template text.
+File: `test/integration_shell_init.zig`
 
-Cons:
+- PTY cancel-path coverage for bare `wt` picker across `zsh`/`bash`/`nu`.
+- Confirms interactive picker prompt remains reachable and cancellation is non-destructive.
 
-- Does not execute in a real shell.
-- Cannot validate actual `cd` side effects or stream-routing behavior.
+## Validation Commands
 
-### 2) Integration tests using real shell processes (recommended next)
+1. `mise run format`
+2. `mise run test`
 
-What it checks:
+Optional manual spot checks:
 
-- End-to-end wrapper execution in real `zsh`/`bash` processes.
-- `pwd` changes after `wt new` through the wrapper.
-- `stderr` and `stdout` behavior under success/failure paths.
+1. Source shell-init in your shell startup file.
+2. Verify `wt new <branch>` changes into the created worktree.
+3. Verify bare `wt` opens picker in interactive terminal.
+4. Verify bare `wt` in a non-interactive shell script behaves like plain binary invocation.
 
-How to structure:
+## Known Gaps / Follow-ups
 
-1. Create temp repo fixture (similar to existing integration tests).
-2. Emit shell-init script into a temporary file:
-   - `wt shell-init zsh > /tmp/wt.zsh`
-   - `wt shell-init bash > /tmp/wt.bash`
-3. Run shell with `-c` to source script and execute assertions:
-   - start in repo root
-   - run wrapper call (`wt new feat-x`)
-   - print `pwd` and compare to expected worktree path
-4. Capture shell `stdout`, `stderr`, and exit code from parent test process.
+1. Fish runtime parity is not yet covered by real-shell integration tests.
+2. Additional explicit failure-path assertions for `new|add` stderr/no-`cd` invariants can be expanded further.
 
-Pros:
-
-- High confidence in real runtime behavior.
-- Catches wrapper execution bugs that unit tests cannot.
-
-Cons:
-
-- Requires target shells installed in CI/runtime.
-- Slightly slower and more environment-dependent than unit tests.
-
-### 3) PTY/interaction harness for picker-heavy behavior (optional)
-
-What it checks:
-
-- Interactive flows that depend on TTY behavior (for example picker cancellation keys).
-
-Pros:
-
-- Closest to real user terminal behavior.
-
-Cons:
-
-- Most complex and flaky option.
-- Highest maintenance burden.
-- Not needed for initial parity checks.
-
-## Stream-Routing Validation
-
-For `wt new|add` wrapper behavior, include explicit checks:
-
-1. Success path:
-   - `stdout` should not include unrelated noise from wrapper internals.
-   - `pwd` should move to the new worktree path.
-2. Failure path:
-   - force a command failure (for example invalid base ref).
-   - verify user-facing error appears on `stderr`.
-   - verify working directory remains unchanged.
-
-## Local Workflow
-
-For local manual verification before merge:
-
-1. `mise run build`
-2. In a temp repo, source shell-init snippet for target shell.
-3. Run:
-   - `wt new <branch>` and confirm directory handoff.
-   - failing `wt new <branch> <bad-base>` and confirm stderr + no `cd`.
-   - `wt` no-arg flow and cancel path behavior.
-
-## CI Workflow
-
-Recommended phased rollout:
-
-1. Keep current unit tests as baseline.
-2. Add non-interactive real-shell integration tests for `zsh` and `bash`.
-3. Gate shell-specific tests so missing shell binaries skip with clear message.
-4. Add optional PTY coverage only where non-PTY tests cannot cover behavior.
-
-## Reliability Risks And Mitigations
-
-Risk: shell binary differences across runners.
-Mitigation: pin test shell versions where feasible; skip with explicit diagnostics if unavailable.
-
-Risk: brittle assertions against full output text.
-Mitigation: assert key invariants (`pwd`, exit code, presence of key stderr markers) instead of full output equality.
-
-Risk: filesystem race or temp-path assumptions.
-Mitigation: use per-test temp dirs and absolute-path checks.
-
-## Recommended Path
-
-Recommended strategy for this repo:
-
-1. Continue unit string tests in `shell_init.zig`.
-2. Implement real-shell integration tests for `zsh` and `bash` as the primary new coverage.
-3. Defer PTY harness work until a concrete bug requires it.
-
-This balances confidence and maintenance cost, and directly supports follow-up implementation bead `wt-1od`.
+These are tracked as follow-up work, while current baseline already guards the interactive-only no-arg policy and cross-shell wrapper contract.
