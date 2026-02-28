@@ -540,7 +540,19 @@ fn inspectCandidate(
     const status = git.parseStatusPorcelain(status_output);
 
     const unmerged = try git.countUnmergedCommits(allocator, main_path, "HEAD", localCommitReference(wt));
-    const has_local_commits = unmerged > 0;
+    const has_local_commits = blk: {
+        if (unmerged == 0) break :blk false;
+
+        // Prefer patch-unique detection so rebased/cherry-picked equivalents
+        // do not count as local-only work in rm safety checks.
+        const unique_local = git.countPatchUniqueCommits(
+            allocator,
+            main_path,
+            "HEAD",
+            localCommitReference(wt),
+        ) catch unmerged;
+        break :blk unique_local > 0;
+    };
 
     const has_dirty = status.modified > 0 or status.untracked > 0;
 

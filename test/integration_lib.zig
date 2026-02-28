@@ -99,6 +99,69 @@ test "integration: count unmerged commits for feature branch" {
     try std.testing.expectEqual(@as(usize, 0), unmerged_after_merge);
 }
 
+test "integration: patch-equivalent commits are not treated as unique local commits" {
+    const allocator = std.testing.allocator;
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const wt_path = try worktree.computeWorktreePath(allocator, repo_path, "feat-cherry-equivalent-int");
+    defer {
+        helpers.cleanupPath(allocator, wt_path);
+        allocator.free(wt_path);
+    }
+
+    const add_output = try git.runGit(
+        allocator,
+        repo_path,
+        &.{ "worktree", "add", "-b", "feat-cherry-equivalent-int", wt_path },
+    );
+    allocator.free(add_output);
+
+    const feature_file = try std.fs.path.join(allocator, &.{ wt_path, "feature.txt" });
+    defer allocator.free(feature_file);
+    try helpers.writeFile(feature_file, "feature\n");
+
+    const add_feature_output = try git.runGit(allocator, wt_path, &.{ "add", "feature.txt" });
+    allocator.free(add_feature_output);
+    const feature_commit_output = try git.runGit(allocator, wt_path, &.{ "commit", "-m", "feature commit" });
+    allocator.free(feature_commit_output);
+
+    const main_file = try std.fs.path.join(allocator, &.{ repo_path, "main.txt" });
+    defer allocator.free(main_file);
+    try helpers.writeFile(main_file, "main\n");
+
+    const add_main_output = try git.runGit(allocator, repo_path, &.{ "add", "main.txt" });
+    allocator.free(add_main_output);
+    const main_commit_output = try git.runGit(allocator, repo_path, &.{ "commit", "-m", "main commit" });
+    allocator.free(main_commit_output);
+
+    const feature_sha_output = try git.runGit(allocator, wt_path, &.{ "rev-parse", "HEAD" });
+    defer allocator.free(feature_sha_output);
+    const feature_sha = std.mem.trim(u8, feature_sha_output, " \t\r\n");
+
+    const cherry_pick_output = try git.runGit(allocator, repo_path, &.{ "cherry-pick", feature_sha });
+    allocator.free(cherry_pick_output);
+
+    const unmerged = try git.countUnmergedCommits(
+        allocator,
+        repo_path,
+        "HEAD",
+        "feat-cherry-equivalent-int",
+    );
+    try std.testing.expectEqual(@as(usize, 1), unmerged);
+
+    const patch_unique = try git.countPatchUniqueCommits(
+        allocator,
+        repo_path,
+        "HEAD",
+        "feat-cherry-equivalent-int",
+    );
+    try std.testing.expectEqual(@as(usize, 0), patch_unique);
+}
+
 test "integration: ahead and behind counts diverge after commits on both branches" {
     const allocator = std.testing.allocator;
     const repo_path = try helpers.createTestRepo(allocator);
