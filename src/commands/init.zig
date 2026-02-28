@@ -16,6 +16,12 @@ const DeclineDecision = enum {
     quit,
 };
 
+const YesNoDecision = enum {
+    yes,
+    no,
+    cancel,
+};
+
 const ansi_reset = ui.ansi.reset;
 const ansi_bold = ui.ansi.bold;
 const ansi_green = ui.ansi.green;
@@ -78,18 +84,26 @@ fn promptYesNo(
         try stdout.print("{s}{s}", .{ question, suffix });
 
         if (try tryReadSingleKey(stdin_file)) |key_raw| {
-            const key = std.ascii.toLower(key_raw);
-            if (key == '\r' or key == '\n') {
-                try stdout.writeAll("\n");
-                return default_yes;
-            }
-            if (key == 'y') {
-                try stdout.writeAll("y\n");
-                return true;
-            }
-            if (key == 'n') {
-                try stdout.writeAll("n\n");
-                return false;
+            if (yesNoDecisionFromSingleKey(key_raw, default_yes)) |decision| {
+                const key = std.ascii.toLower(key_raw);
+                switch (decision) {
+                    .yes => {
+                        if (key == 'y') {
+                            try stdout.writeAll("y\n");
+                        } else {
+                            try stdout.writeAll("\n");
+                        }
+                        return true;
+                    },
+                    .no => {
+                        try stdout.writeAll("n\n");
+                        return false;
+                    },
+                    .cancel => {
+                        try stdout.writeAll("\n");
+                        return error.UserCancelled;
+                    },
+                }
             }
             try stdout.print("{c}\n", .{key_raw});
             try stdout.writeAll("Please answer y or n.\n");
@@ -100,13 +114,34 @@ fn promptYesNo(
         const response = try stdin_file.deprecatedReader().readUntilDelimiterOrEof(&buf, '\n');
         if (response == null) return default_yes;
 
-        const trimmed = std.mem.trim(u8, response.?, " \t\r\n");
-        if (trimmed.len == 0) return default_yes;
-        if (isConfirmedResponse(trimmed)) return true;
-        if (isNegativeResponse(trimmed)) return false;
+        if (yesNoDecisionFromLineInput(response.?, default_yes)) |decision| {
+            return switch (decision) {
+                .yes => true,
+                .no => false,
+                .cancel => error.UserCancelled,
+            };
+        }
 
         try stdout.writeAll("Please answer yes or no.\n");
     }
+}
+
+fn yesNoDecisionFromSingleKey(key_raw: u8, default_yes: bool) ?YesNoDecision {
+    const key = std.ascii.toLower(key_raw);
+    if (key == '\r' or key == '\n') return if (default_yes) .yes else .no;
+    if (key == 'y') return .yes;
+    if (key == 'n') return .no;
+    if (isCancelKey(key_raw)) return .cancel;
+    return null;
+}
+
+fn yesNoDecisionFromLineInput(input: []const u8, default_yes: bool) ?YesNoDecision {
+    const trimmed = std.mem.trim(u8, input, " \t\r\n");
+    if (trimmed.len == 0) return if (default_yes) .yes else .no;
+    if (isConfirmedResponse(trimmed)) return .yes;
+    if (isNegativeResponse(trimmed)) return .no;
+    if (trimmed.len == 1 and isCancelKey(trimmed[0])) return .cancel;
+    return null;
 }
 
 fn applyDecisionFromSingleKey(key_raw: u8) ?ApplyDecision {
@@ -419,7 +454,14 @@ pub fn run(allocator: std.mem.Allocator) !void {
                     );
                     defer allocator.free(question);
 
-                    const keep = try promptYesNo(stdout, stdin_file, question, true);
+                    const keep = promptYesNo(stdout, stdin_file, question, true) catch |err| switch (err) {
+                        error.UserCancelled => {
+                            try printScreenBreak(stdout);
+                            try stdout.writeAll("No changes written.\n");
+                            return;
+                        },
+                        else => return err,
+                    };
                     if (!keep) {
                         try revertChange(&editable, change);
                     }
@@ -494,4 +536,22 @@ test "decline decision line input supports escaped cancel" {
     try std.testing.expectEqual(@as(?DeclineDecision, .quit), declineDecisionFromLineInput(&esc_text));
     try std.testing.expectEqual(@as(?DeclineDecision, .quit), declineDecisionFromLineInput(&ctrl_c_text));
     try std.testing.expectEqual(@as(?DeclineDecision, .review), declineDecisionFromLineInput(""));
+}
+
+test "yes/no decision supports escape and ctrl-c cancel" {
+    try std.testing.expectEqual(@as(?YesNoDecision, .cancel), yesNoDecisionFromSingleKey(esc_key, true));
+    try std.testing.expectEqual(@as(?YesNoDecision, .cancel), yesNoDecisionFromSingleKey(ctrl_c_key, true));
+    try std.testing.expectEqual(@as(?YesNoDecision, .yes), yesNoDecisionFromSingleKey('\n', true));
+    try std.testing.expectEqual(@as(?YesNoDecision, .no), yesNoDecisionFromSingleKey('\n', false));
+    try std.testing.expectEqual(@as(?YesNoDecision, .yes), yesNoDecisionFromSingleKey('y', true));
+    try std.testing.expectEqual(@as(?YesNoDecision, .no), yesNoDecisionFromSingleKey('n', true));
+}
+
+test "yes/no line input supports escaped cancel" {
+    const esc_text = [_]u8{esc_key};
+    const ctrl_c_text = [_]u8{ctrl_c_key};
+    try std.testing.expectEqual(@as(?YesNoDecision, .cancel), yesNoDecisionFromLineInput(&esc_text, true));
+    try std.testing.expectEqual(@as(?YesNoDecision, .cancel), yesNoDecisionFromLineInput(&ctrl_c_text, true));
+    try std.testing.expectEqual(@as(?YesNoDecision, .yes), yesNoDecisionFromLineInput("", true));
+    try std.testing.expectEqual(@as(?YesNoDecision, .no), yesNoDecisionFromLineInput("", false));
 }
