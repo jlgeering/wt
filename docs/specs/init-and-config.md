@@ -28,6 +28,7 @@ Built-in recommendation patterns currently include:
 - copy recommendations:
   - `.env.local` and `.env.*.local`
   - `.vscode/settings.local.json`
+  - `deps` and `_build` when `mix.exs` is detected at repo root or discovered subproject roots
 
 Built-in command recommendations currently include:
 

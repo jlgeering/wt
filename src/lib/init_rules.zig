@@ -31,6 +31,9 @@ pub const PathRule = struct {
     prompt: []const u8,
     reason: []const u8,
     patterns: []const Pattern,
+    // Optional recommendation leaf paths to emit when any pattern matches.
+    // When empty, the matched path itself is recommended.
+    recommendation_values: []const []const u8 = &.{},
 };
 
 pub const CommandRule = struct {
@@ -96,6 +99,16 @@ pub const path_rules = [_]PathRule{
         .patterns = &.{
             .{ .kind = .exact, .value = ".vscode/settings.local.json" },
         },
+    },
+    .{
+        .id = "elixir-cow-build-and-deps",
+        .section = .copy,
+        .prompt = "Copy Elixir deps and _build directories from the main repo",
+        .reason = "Reusing Elixir dependency and build outputs speeds up worktree setup while preserving CoW behavior where available.",
+        .patterns = &.{
+            .{ .kind = .exact, .value = "mix.exs" },
+        },
+        .recommendation_values = &.{ "deps", "_build" },
     },
     .{
         .id = "direnv-envrc",
@@ -215,4 +228,22 @@ test "default setup strategy for mise and claude local files is symlink" {
 
     try std.testing.expect(saw_mise_rule);
     try std.testing.expect(saw_claude_rule);
+}
+
+test "elixir mix rule recommends deps and _build copy paths" {
+    var saw_rule = false;
+
+    for (path_rules) |rule| {
+        if (!std.mem.eql(u8, rule.id, "elixir-cow-build-and-deps")) continue;
+        saw_rule = true;
+        try std.testing.expectEqual(Section.copy, rule.section);
+        try std.testing.expectEqual(@as(usize, 1), rule.patterns.len);
+        try std.testing.expectEqual(PatternKind.exact, rule.patterns[0].kind);
+        try std.testing.expectEqualStrings("mix.exs", rule.patterns[0].value);
+        try std.testing.expectEqual(@as(usize, 2), rule.recommendation_values.len);
+        try std.testing.expectEqualStrings("deps", rule.recommendation_values[0]);
+        try std.testing.expectEqualStrings("_build", rule.recommendation_values[1]);
+    }
+
+    try std.testing.expect(saw_rule);
 }

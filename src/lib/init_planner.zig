@@ -587,13 +587,13 @@ fn discoverForPathRule(
                     defer allocator.free(rel_path);
                     if (init_scan.pathExists(allocator, context.repo_root, rel_path)) {
                         matched = true;
-                        _ = try addRecommendationIfMissing(allocator, recs, .{
-                            .rule_id = rule.id,
-                            .section = rule.section,
-                            .value = rel_path,
-                            .prompt = rule.prompt,
-                            .reason = rule.reason,
-                        });
+                        try addPathRecommendationsForMatch(
+                            allocator,
+                            recs,
+                            rule,
+                            prefix,
+                            rel_path,
+                        );
                     }
                 },
                 .prefix, .glob => {
@@ -609,13 +609,13 @@ fn discoverForPathRule(
                         matched = true;
                         const rel_path = try joinRelPath(allocator, prefix, entry_name);
                         defer allocator.free(rel_path);
-                        _ = try addRecommendationIfMissing(allocator, recs, .{
-                            .rule_id = rule.id,
-                            .section = rule.section,
-                            .value = rel_path,
-                            .prompt = rule.prompt,
-                            .reason = rule.reason,
-                        });
+                        try addPathRecommendationsForMatch(
+                            allocator,
+                            recs,
+                            rule,
+                            prefix,
+                            rel_path,
+                        );
                     }
                 },
             }
@@ -623,6 +623,37 @@ fn discoverForPathRule(
     }
 
     return matched;
+}
+
+fn addPathRecommendationsForMatch(
+    allocator: std.mem.Allocator,
+    recs: *std.array_list.Managed(Recommendation),
+    rule: init_rules.PathRule,
+    prefix: []const u8,
+    detected_rel_path: []const u8,
+) !void {
+    if (rule.recommendation_values.len == 0) {
+        _ = try addRecommendationIfMissing(allocator, recs, .{
+            .rule_id = rule.id,
+            .section = rule.section,
+            .value = detected_rel_path,
+            .prompt = rule.prompt,
+            .reason = rule.reason,
+        });
+        return;
+    }
+
+    for (rule.recommendation_values) |value| {
+        const rel_path = try joinRelPath(allocator, prefix, value);
+        defer allocator.free(rel_path);
+        _ = try addRecommendationIfMissing(allocator, recs, .{
+            .rule_id = rule.id,
+            .section = rule.section,
+            .value = rel_path,
+            .prompt = rule.prompt,
+            .reason = rule.reason,
+        });
+    }
 }
 
 fn joinRelPath(allocator: std.mem.Allocator, prefix: []const u8, leaf: []const u8) ![]u8 {
@@ -837,6 +868,25 @@ test "discoverRecommendations finds file and command suggestions" {
     try std.testing.expect(hasRecommendation(recs, .run, "mise trust"));
 }
 
+test "discoverRecommendations maps mix.exs to Elixir copy targets" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try initTmpGitRepo(&tmp);
+    defer std.testing.allocator.free(root);
+
+    try tmp.dir.writeFile(.{ .sub_path = "mix.exs", .data = "defmodule Root.MixProject do\nend\n" });
+
+    const recs = try discoverRecommendationsWithOptions(std.testing.allocator, root, .{
+        .assume_repo_mise_trusted = true,
+    });
+    defer freeRecommendations(std.testing.allocator, recs);
+
+    try std.testing.expect(hasRecommendation(recs, .copy, "deps"));
+    try std.testing.expect(hasRecommendation(recs, .copy, "_build"));
+    try std.testing.expect(!hasRecommendation(recs, .copy, "mix.exs"));
+}
+
 test "discoverRecommendations includes subproject matches with per-subproject commands" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -849,6 +899,7 @@ test "discoverRecommendations includes subproject matches with per-subproject co
     try tmp.dir.writeFile(.{ .sub_path = "apps/api/.claude/settings.local.json", .data = "{ }\n" });
     try tmp.dir.writeFile(.{ .sub_path = "apps/api/.envrc", .data = "use flake\n" });
     try tmp.dir.writeFile(.{ .sub_path = "apps/api/mise.toml", .data = "[tools]\nzig = \"0.15\"\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/mix.exs", .data = "defmodule Api.MixProject do\nend\n" });
 
     const recs = try discoverRecommendationsWithOptions(std.testing.allocator, root, .{ .assume_repo_mise_trusted = true });
     defer freeRecommendations(std.testing.allocator, recs);
@@ -856,6 +907,8 @@ test "discoverRecommendations includes subproject matches with per-subproject co
     try std.testing.expect(hasRecommendation(recs, .symlink, "apps/api/mise.local.toml"));
     try std.testing.expect(hasRecommendation(recs, .symlink, "apps/api/.claude/settings.local.json"));
     try std.testing.expect(hasRecommendation(recs, .symlink, "apps/api/.envrc"));
+    try std.testing.expect(hasRecommendation(recs, .copy, "apps/api/deps"));
+    try std.testing.expect(hasRecommendation(recs, .copy, "apps/api/_build"));
     try std.testing.expect(hasRecommendation(recs, .run, "cd apps/api && mise trust"));
     try std.testing.expect(hasRecommendation(recs, .run, "cd apps/api && direnv allow"));
 }
@@ -902,6 +955,9 @@ test "discoverRecommendations limits subproject scan depth and skips hidden root
 
     try tmp.dir.makePath("apps/api/service/.claude");
     try tmp.dir.makePath(".hidden/tools/.claude");
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/mix.exs", .data = "defmodule Api.MixProject do\nend\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/service/mix.exs", .data = "defmodule Service.MixProject do\nend\n" });
+    try tmp.dir.writeFile(.{ .sub_path = ".hidden/tools/mix.exs", .data = "defmodule Hidden.MixProject do\nend\n" });
     try tmp.dir.writeFile(.{ .sub_path = "apps/api/mise.local.toml", .data = "trust = true\n" });
     try tmp.dir.writeFile(.{ .sub_path = "apps/api/service/mise.local.toml", .data = "trust = true\n" });
     try tmp.dir.writeFile(.{ .sub_path = "apps/api/service/.claude/settings.local.json", .data = "{ }\n" });
@@ -915,8 +971,14 @@ test "discoverRecommendations limits subproject scan depth and skips hidden root
     defer freeRecommendations(std.testing.allocator, recs);
 
     try std.testing.expect(hasRecommendation(recs, .symlink, "apps/api/mise.local.toml"));
+    try std.testing.expect(hasRecommendation(recs, .copy, "apps/api/deps"));
+    try std.testing.expect(hasRecommendation(recs, .copy, "apps/api/_build"));
     try std.testing.expect(!hasRecommendation(recs, .symlink, "apps/api/service/mise.local.toml"));
     try std.testing.expect(!hasRecommendation(recs, .symlink, "apps/api/service/.claude/settings.local.json"));
+    try std.testing.expect(!hasRecommendation(recs, .copy, "apps/api/service/deps"));
+    try std.testing.expect(!hasRecommendation(recs, .copy, "apps/api/service/_build"));
+    try std.testing.expect(!hasRecommendation(recs, .copy, ".hidden/tools/deps"));
+    try std.testing.expect(!hasRecommendation(recs, .copy, ".hidden/tools/_build"));
     try std.testing.expect(!hasRecommendation(recs, .symlink, ".hidden/tools/mise.local.toml"));
     try std.testing.expect(!hasRecommendation(recs, .symlink, ".hidden/tools/.claude/settings.local.json"));
 }
@@ -996,6 +1058,7 @@ test "discoverRecommendations can expand depth when requested" {
     try tmp.dir.makePath("apps/api/service/.claude");
     try tmp.dir.writeFile(.{ .sub_path = "apps/api/service/mise.local.toml", .data = "trust = true\n" });
     try tmp.dir.writeFile(.{ .sub_path = "apps/api/service/.claude/settings.local.json", .data = "{ }\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/service/mix.exs", .data = "defmodule Service.MixProject do\nend\n" });
 
     const recs = try discoverRecommendationsWithOptions(std.testing.allocator, root, .{
         .assume_repo_mise_trusted = true,
@@ -1005,6 +1068,8 @@ test "discoverRecommendations can expand depth when requested" {
 
     try std.testing.expect(hasRecommendation(recs, .symlink, "apps/api/service/mise.local.toml"));
     try std.testing.expect(hasRecommendation(recs, .symlink, "apps/api/service/.claude/settings.local.json"));
+    try std.testing.expect(hasRecommendation(recs, .copy, "apps/api/service/deps"));
+    try std.testing.expect(hasRecommendation(recs, .copy, "apps/api/service/_build"));
 }
 
 test "discoverRecommendations omits mise trust when repo is not trusted" {
@@ -1105,6 +1170,8 @@ test "discoverRecommendations defaults to depth 2 for subproject scanning" {
     defer std.testing.allocator.free(root);
 
     try tmp.dir.makePath("a/b/c/.claude");
+    try tmp.dir.writeFile(.{ .sub_path = "a/b/mix.exs", .data = "defmodule AB.MixProject do\nend\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "a/b/c/mix.exs", .data = "defmodule ABC.MixProject do\nend\n" });
     try tmp.dir.writeFile(.{ .sub_path = "a/b/mise.local.toml", .data = "trust = true\n" });
     try tmp.dir.writeFile(.{ .sub_path = "a/b/c/mise.local.toml", .data = "trust = true\n" });
     try tmp.dir.writeFile(.{ .sub_path = "a/b/c/.claude/settings.local.json", .data = "{ }\n" });
@@ -1115,8 +1182,12 @@ test "discoverRecommendations defaults to depth 2 for subproject scanning" {
     defer freeRecommendations(std.testing.allocator, recs);
 
     try std.testing.expect(hasRecommendation(recs, .symlink, "a/b/mise.local.toml"));
+    try std.testing.expect(hasRecommendation(recs, .copy, "a/b/deps"));
+    try std.testing.expect(hasRecommendation(recs, .copy, "a/b/_build"));
     try std.testing.expect(!hasRecommendation(recs, .symlink, "a/b/c/mise.local.toml"));
     try std.testing.expect(!hasRecommendation(recs, .symlink, "a/b/c/.claude/settings.local.json"));
+    try std.testing.expect(!hasRecommendation(recs, .copy, "a/b/c/deps"));
+    try std.testing.expect(!hasRecommendation(recs, .copy, "a/b/c/_build"));
 }
 
 test "discoverRecommendations keeps hidden exact root targets" {
