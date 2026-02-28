@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-02-28
+
+### Fixed
+
+- Improved `wt rm` local-commit safety checks to ignore patch-equivalent commits, reducing false positive blocks when histories differ but content matches.
+- Corrected Nushell shell-init picker behavior to avoid unsafe TTY/stderr interactions and expanded runtime parity coverage for picker flows.
+
 ## [0.2.0] - 2026-02-28
 
 ### Added
@@ -44,6 +51,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Core worktree management commands: `list`, `new`, `rm`, and `init`.
 - Shell integration support via `wt shell-init` for `zsh`, `bash`, `fish`, and `nu`.
 
+[0.2.1]: https://github.com/jlgeering/wt/releases/tag/v0.2.1
 [0.2.0]: https://github.com/jlgeering/wt/releases/tag/v0.2.0
 [0.1.1]: https://github.com/jlgeering/wt/releases/tag/v0.1.1
 [0.1.0]: https://github.com/jlgeering/wt/releases/tag/v0.1.0
