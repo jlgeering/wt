@@ -141,14 +141,14 @@ test "integration: ahead and behind counts diverge after commits on both branche
     const ahead = try git.countUnmergedCommits(
         allocator,
         repo_path,
-        "main",
+        "HEAD",
         "feat-diverge-int",
     );
     const behind = try git.countUnmergedCommits(
         allocator,
         repo_path,
         "feat-diverge-int",
-        "main",
+        "HEAD",
     );
 
     try std.testing.expectEqual(@as(usize, 1), ahead);
@@ -224,12 +224,12 @@ test "integration: detached worktree unique commit is detectable" {
     defer allocator.free(detached_head_output);
     const detached_head = std.mem.trim(u8, detached_head_output, " \t\r\n");
 
-    const unique_commits = try git.countUnmergedCommits(
+    const local_commits = try git.countUnmergedCommits(
         allocator,
         repo_path,
         "HEAD",
         detached_head,
     );
 
-    try std.testing.expectEqual(@as(usize, 1), unique_commits);
+    try std.testing.expectEqual(@as(usize, 1), local_commits);
 }
