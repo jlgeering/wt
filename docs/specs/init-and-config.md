@@ -4,7 +4,7 @@
 
 ## Behavior
 
-- Scans the repo for common local files and builds a full proposal for `copy`, `symlink`, and `run` entries.
+- Scans both the repo root and the current repo-relative subdirectory (when invoked below root) for common local files, then builds a full proposal for `copy`, `symlink`, and `run` entries.
 - Keeps already-matching recommendations automatically on re-runs.
 - Includes anti-pattern cleanup removals in the proposal.
 - Shows anti-pattern warnings only when anti-patterns are actually detected.
@@ -26,7 +26,7 @@ Built-in recommendation patterns currently include:
 
 Built-in command recommendations currently include:
 
-- `mise trust` (when mise config is detected and the current repo directory is already trusted)
+- `mise trust` (when mise config is detected in active detection scope and at least one matching scope is already trusted)
 - `direnv allow` (when `.envrc` is detected)
 
 Built-in anti-pattern checks include:

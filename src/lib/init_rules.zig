@@ -6,6 +6,12 @@ pub const Section = enum {
     run,
 };
 
+pub const DetectionScope = enum {
+    repo_root,
+    invocation_subdir,
+    repo_root_and_invocation_subdir,
+};
+
 pub const PatternKind = enum {
     exact,
     prefix,
@@ -20,6 +26,7 @@ pub const Pattern = struct {
 pub const PathRule = struct {
     id: []const u8,
     section: Section,
+    detection_scope: DetectionScope = .repo_root_and_invocation_subdir,
     prompt: []const u8,
     reason: []const u8,
     patterns: []const Pattern,
@@ -28,6 +35,7 @@ pub const PathRule = struct {
 pub const CommandRule = struct {
     id: []const u8,
     section: Section = .run,
+    detection_scope: DetectionScope = .repo_root_and_invocation_subdir,
     prompt: []const u8,
     reason: []const u8,
     command: []const u8,
