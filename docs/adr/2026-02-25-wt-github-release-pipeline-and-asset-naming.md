@@ -1,8 +1,9 @@
 # ADR: Tag-Driven GitHub Release Pipeline and Canonical Asset Names
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-02-25
 - Decision Makers: wt maintainers
+- Superseded By: `2026-02-28-wt-defer-github-release-workflow-until-ci-hardening.md`
 
 ## Context
 
@@ -32,4 +33,4 @@ Downstream distribution tasks (for example Homebrew formula automation) need sta
 - Release publication becomes consistent, reproducible, and easier to audit.
 - Homebrew/tap automation can rely on stable artifact names and checksums.
 - Releases now depend on GitHub Actions and `GITHUB_TOKEN` release permissions.
-- Manual release flow remains possible as a fallback, but the workflow is the default path.
+- This decision was later deferred in favor of a mise-only release path until CI hardening.
