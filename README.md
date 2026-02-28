@@ -116,7 +116,7 @@ mise run test
 mise run lint
 mise run format
 mise run check
-mise run run -- --help
+mise x -- zig build run -- --help
 mise run build:release
 mise run build:all
 mise run clean

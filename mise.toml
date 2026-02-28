@@ -19,10 +19,6 @@ run = "zig fmt build.zig src test"
 description = "Check Zig formatting"
 run = "zig fmt --check build.zig src test"
 
-[tasks.run]
-description = "Build and run wt with passthrough args"
-run = "zig build run -- {{arg(rest=true)}}"
-
 [tasks."build:release"]
 description = "Build release binary for current platform"
 run = "zig build -Doptimize=ReleaseSafe"
@@ -126,7 +122,10 @@ zig build -Dtarget=x86_64-windows -Doptimize=ReleaseSafe -Dapp_version="$usage_r
 [tasks."release:build"]
 description = "Run preflight checks and build all release binaries"
 hide = true
-depends = ["check", "release:build:mac", "release:build:linux", "release:build:windows"]
+run = [
+  { task = "check" },
+  { tasks = ["release:build:mac", "release:build:linux", "release:build:windows"] },
+]
 
 [tasks."release:package"]
 description = "Verify host artifact and package release archives + checksums"
