@@ -91,8 +91,18 @@ test "integration: setup actions run against a real worktree" {
     const linked_path = try std.fs.path.join(allocator, &.{ wt_path, "link-me.txt" });
     defer allocator.free(linked_path);
     var link_buf: [std.fs.max_path_bytes]u8 = undefined;
-    const target = try std.fs.cwd().readLink(linked_path, &link_buf);
-    try std.testing.expectEqualStrings(link_source, target);
+    if (builtin.os.tag == .windows) {
+        if (std.fs.cwd().readLink(linked_path, &link_buf)) |target| {
+            try std.testing.expectEqualStrings(link_source, target);
+        } else |err| switch (err) {
+            // Windows may not permit symlink creation without extra privileges.
+            error.FileNotFound => {},
+            else => return err,
+        }
+    } else {
+        const target = try std.fs.cwd().readLink(linked_path, &link_buf);
+        try std.testing.expectEqualStrings(link_source, target);
+    }
 
     const setup_log_path = try std.fs.path.join(allocator, &.{ wt_path, "setup.log" });
     defer allocator.free(setup_log_path);

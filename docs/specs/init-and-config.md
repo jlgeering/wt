@@ -54,9 +54,14 @@ commands = ["mise trust"]
 
 Setup semantics:
 
-- `[copy].paths`: copy paths from main repo to the new worktree (copy-on-write where available).
+- `[copy].paths`: copy paths from main repo to the new worktree.
+- macOS uses `cp -cR` and Linux uses `cp -R --reflink=auto` to preserve CoW/reflink behavior where available.
+- Windows uses native filesystem copy APIs (no `cp` dependency).
 - `[symlink].paths`: create symlinks in the new worktree pointing back to files in the main repo.
+- On Windows, symlink creation can be unavailable without Developer Mode/elevated privileges; when it fails, setup logs `symlink failed for <path>` and continues.
 - `[run].commands`: run shell commands in the new worktree after creation.
-- Missing source paths are skipped with warnings.
-- Existing destination paths are skipped with warnings.
+- Command runner is platform-specific: `sh -c` on non-Windows, `cmd.exe /C` on Windows.
+- Run command strings must be valid for the host shell (`sh` syntax on Unix-like systems, `cmd.exe` syntax on Windows).
+- Missing source paths are skipped with `skip copy ...: source doesn't exist` or `skip symlink ...: source doesn't exist`.
+- Existing destination paths are skipped with `skip copy ...: already exists` or `skip symlink ...: already exists`.
 - Failed run commands warn and continue to the next command.
