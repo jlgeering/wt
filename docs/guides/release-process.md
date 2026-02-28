@@ -40,7 +40,7 @@ mise run release -- 0.1.1
 
 `mise run release -- <X.Y.Z>` orchestrates an internal task DAG and a Zig helper (`src/tools/release.zig`):
 
-1. `release` exports `WT_RELEASE_VERSION=<X.Y.Z>` and runs the internal release DAG.
+1. `release` exports `RELEASE_VERSION=<X.Y.Z>` and runs the internal release DAG.
 2. `release:validate` validates git/version/changelog preconditions and writes notes to `dist/release/vX.Y.Z/notes.md`.
 3. `release:build:*` cross-builds all target binaries with `-Dapp_version=X.Y.Z` into `dist/release/vX.Y.Z/build/<target>`.
 4. `release:package` verifies host artifact version, packages archives, writes `SHA256SUMS`, and verifies checksums.
@@ -64,7 +64,7 @@ Use these commands to inspect the internal DAG without publishing:
 
 ```bash
 mise tasks deps release:pipeline
-WT_RELEASE_VERSION=<X.Y.Z> mise run -n release:pipeline
+RELEASE_VERSION=<X.Y.Z> mise run -n release:pipeline
 ```
 
 ## Draft verification checklist
