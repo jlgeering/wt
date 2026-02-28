@@ -29,6 +29,7 @@ Built-in recommendation patterns currently include:
   - `.env.local` and `.env.*.local`
   - `.vscode/settings.local.json`
   - `deps` and `_build` when `mix.exs` is detected at repo root or discovered subproject roots
+    - for umbrella projects (`apps_path` in parent `mix.exs`), child apps under `apps/*` do not get separate `deps`/`_build` recommendations
 
 Built-in command recommendations currently include:
 

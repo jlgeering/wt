@@ -589,6 +589,7 @@ fn discoverForPathRule(
                         matched = true;
                         try addPathRecommendationsForMatch(
                             allocator,
+                            context,
                             recs,
                             rule,
                             prefix,
@@ -611,6 +612,7 @@ fn discoverForPathRule(
                         defer allocator.free(rel_path);
                         try addPathRecommendationsForMatch(
                             allocator,
+                            context,
                             recs,
                             rule,
                             prefix,
@@ -627,11 +629,16 @@ fn discoverForPathRule(
 
 fn addPathRecommendationsForMatch(
     allocator: std.mem.Allocator,
+    context: *const DetectionContext,
     recs: *std.array_list.Managed(Recommendation),
     rule: init_rules.PathRule,
     prefix: []const u8,
     detected_rel_path: []const u8,
 ) !void {
+    if (try shouldSuppressPathRecommendationsAtPrefix(allocator, context, rule, prefix)) {
+        return;
+    }
+
     if (rule.recommendation_values.len == 0) {
         _ = try addRecommendationIfMissing(allocator, recs, .{
             .rule_id = rule.id,
@@ -654,6 +661,46 @@ fn addPathRecommendationsForMatch(
             .reason = rule.reason,
         });
     }
+}
+
+fn shouldSuppressPathRecommendationsAtPrefix(
+    allocator: std.mem.Allocator,
+    context: *const DetectionContext,
+    rule: init_rules.PathRule,
+    prefix: []const u8,
+) !bool {
+    if (!std.mem.eql(u8, rule.id, "elixir-cow-build-and-deps")) return false;
+    return isUmbrellaChildPrefix(allocator, context.repo_root, prefix);
+}
+
+fn isUmbrellaChildPrefix(
+    allocator: std.mem.Allocator,
+    repo_root: []const u8,
+    prefix: []const u8,
+) !bool {
+    const parent_prefix = std.fs.path.dirname(prefix) orelse return false;
+    if (!std.mem.eql(u8, std.fs.path.basename(parent_prefix), "apps")) return false;
+
+    const umbrella_root_prefix = std.fs.path.dirname(parent_prefix) orelse "";
+    return isElixirUmbrellaRootPrefix(allocator, repo_root, umbrella_root_prefix);
+}
+
+fn isElixirUmbrellaRootPrefix(
+    allocator: std.mem.Allocator,
+    repo_root: []const u8,
+    prefix: []const u8,
+) !bool {
+    const mix_rel_path = try joinRelPath(allocator, prefix, "mix.exs");
+    defer allocator.free(mix_rel_path);
+    if (!init_scan.pathExists(allocator, repo_root, mix_rel_path)) return false;
+
+    const mix_abs_path = try std.fs.path.join(allocator, &.{ repo_root, mix_rel_path });
+    defer allocator.free(mix_abs_path);
+
+    const mix_contents = std.fs.cwd().readFileAlloc(allocator, mix_abs_path, 1024 * 1024) catch return false;
+    defer allocator.free(mix_contents);
+
+    return std.mem.indexOf(u8, mix_contents, "apps_path") != null;
 }
 
 fn joinRelPath(allocator: std.mem.Allocator, prefix: []const u8, leaf: []const u8) ![]u8 {
@@ -885,6 +932,74 @@ test "discoverRecommendations maps mix.exs to Elixir copy targets" {
     try std.testing.expect(hasRecommendation(recs, .copy, "deps"));
     try std.testing.expect(hasRecommendation(recs, .copy, "_build"));
     try std.testing.expect(!hasRecommendation(recs, .copy, "mix.exs"));
+}
+
+test "discoverRecommendations suppresses Elixir copy targets for umbrella child apps" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try initTmpGitRepo(&tmp);
+    defer std.testing.allocator.free(root);
+
+    try tmp.dir.makePath("apps/api");
+    try tmp.dir.writeFile(.{
+        .sub_path = "mix.exs",
+        .data =
+        \\defmodule Umbrella.MixProject do
+        \\  def project do
+        \\    [apps_path: "apps"]
+        \\  end
+        \\end
+        \\
+        ,
+    });
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/mix.exs", .data = "defmodule Api.MixProject do\nend\n" });
+
+    const recs = try discoverRecommendationsWithOptions(std.testing.allocator, root, .{
+        .assume_repo_mise_trusted = true,
+    });
+    defer freeRecommendations(std.testing.allocator, recs);
+
+    try std.testing.expect(hasRecommendation(recs, .copy, "deps"));
+    try std.testing.expect(hasRecommendation(recs, .copy, "_build"));
+    try std.testing.expect(!hasRecommendation(recs, .copy, "apps/api/deps"));
+    try std.testing.expect(!hasRecommendation(recs, .copy, "apps/api/_build"));
+}
+
+test "discoverRecommendations suppresses nested umbrella child targets when depth includes child apps" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try initTmpGitRepo(&tmp);
+    defer std.testing.allocator.free(root);
+
+    try tmp.dir.makePath("services/platform/apps/api");
+    try tmp.dir.writeFile(.{
+        .sub_path = "services/platform/mix.exs",
+        .data =
+        \\defmodule Platform.MixProject do
+        \\  def project do
+        \\    [apps_path: "apps"]
+        \\  end
+        \\end
+        \\
+        ,
+    });
+    try tmp.dir.writeFile(.{
+        .sub_path = "services/platform/apps/api/mix.exs",
+        .data = "defmodule PlatformApi.MixProject do\nend\n",
+    });
+
+    const recs = try discoverRecommendationsWithOptions(std.testing.allocator, root, .{
+        .assume_repo_mise_trusted = true,
+        .max_subproject_scan_depth = 4,
+    });
+    defer freeRecommendations(std.testing.allocator, recs);
+
+    try std.testing.expect(hasRecommendation(recs, .copy, "services/platform/deps"));
+    try std.testing.expect(hasRecommendation(recs, .copy, "services/platform/_build"));
+    try std.testing.expect(!hasRecommendation(recs, .copy, "services/platform/apps/api/deps"));
+    try std.testing.expect(!hasRecommendation(recs, .copy, "services/platform/apps/api/_build"));
 }
 
 test "discoverRecommendations includes subproject matches with per-subproject commands" {
