@@ -137,3 +137,7 @@ mise run clean
 
 - Agent-specific policy and conventions: `AGENTS.md`
 - Prompt cookbook for long sessions and restart handoffs: `docs/guides/agent-workflow-prompts.md`
+
+## License
+
+Licensed under the Apache License, Version 2.0. See `LICENSE`.
