@@ -65,110 +65,110 @@ const nu_shell_name_choices = buildNuShellNameChoices();
 // - both flows preserve repo-relative subdirectory when present, otherwise fall back to root.
 // - wrappers report entered worktree/root and optional subdirectory after successful `cd`.
 fn buildPosixWrapperBody() []const u8 {
-    return
-        \\    if [ "$#" -gt 0 ] && [ "${1#-}" != "$1" ]; then
-        \\        command wt "$@"
-        \\        return $?
-        \\    fi
-        \\
-        \\    __wt_report_location() {
-        \\        local worktree_root="$1"
-        \\        local target_dir="$2"
-        \\        local entered_subdir=""
-        \\        if [ "$target_dir" != "$worktree_root" ]; then
-        \\            entered_subdir="${target_dir#$worktree_root/}"
-        \\        fi
-        \\
-        \\        if [ -t 1 ]; then
-        \\            local c_reset=$'\033[0m'
-        \\            local c_label=$'\033[2m'
-        \\            local c_worktree=$'\033[36m'
-        \\            local c_subdir=$'\033[33m'
-        \\            printf "\n${c_label}Entered worktree:${c_reset} ${c_worktree}%s${c_reset}\n" "$worktree_root"
-        \\            if [ -n "$entered_subdir" ]; then
-        \\                printf "${c_label}Subdirectory:${c_reset} ${c_subdir}%s${c_reset}\n" "$entered_subdir"
-        \\            fi
-        \\        else
-        \\            printf "\nEntered worktree: %s\n" "$worktree_root"
-        \\            if [ -n "$entered_subdir" ]; then
-        \\                printf "Subdirectory: %s\n" "$entered_subdir"
-        \\            fi
-        \\        fi
-        \\    }
-        \\
-        \\    if [ "$#" -eq 0 ]; then
-        \\        local relative_subdir
-        \\        relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
-        \\        relative_subdir="${relative_subdir%/}"
-        \\        local selected_path
-        \\        selected_path=$(command wt __pick-worktree)
-        \\        local pick_exit=$?
-        \\        if [ $pick_exit -ne 0 ]; then
-        \\            return $pick_exit
-        \\        fi
-        \\        if [ -z "$selected_path" ]; then
-        \\            return 0
-        \\        fi
-        \\        if [ ! -d "$selected_path" ]; then
-        \\            echo "Error: selected worktree no longer exists: $selected_path" >&2
-        \\            return 1
-        \\        fi
-        \\        local target_dir="$selected_path"
-        \\        if [ -n "$relative_subdir" ]; then
-        \\            local candidate_dir="$selected_path/$relative_subdir"
-        \\            if [ -d "$candidate_dir" ]; then
-        \\                target_dir="$candidate_dir"
-        \\            else
-        \\                echo "Subdirectory missing in selected worktree, using root: $selected_path"
-        \\            fi
-        \\        fi
-        \\        cd "$target_dir" || return 1
-        \\        __wt_report_location "$selected_path" "$target_dir"
-        \\        return 0
-        \\    fi
-        \\
-        \\    case "$1" in
-        \\        new|add)
-        \\            local arg
-        \\            for arg in "${@:2}"; do
-        \\                if [ "$arg" = "-h" ] || [ "$arg" = "--help" ]; then
-        \\                    command wt "$@"
-        \\                    return $?
-        \\                fi
-        \\            done
-        \\
-        \\            local relative_subdir
-        \\            relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
-        \\            relative_subdir="${relative_subdir%/}"
-        \\            local output
-        \\            output=$(command wt "__new" "${@:2}")
-        \\            local exit_code=$?
-        \\            if [ $exit_code -eq 0 ] && [ -n "$output" ] && [ -d "$output" ]; then
-        \\                local target_dir="$output"
-        \\                if [ -n "$relative_subdir" ]; then
-        \\                    local candidate_dir="$output/$relative_subdir"
-        \\                    if [ -d "$candidate_dir" ]; then
-        \\                        target_dir="$candidate_dir"
-        \\                    else
-        \\                        echo "Subdirectory missing in new worktree, using root: $output"
-        \\                    fi
-        \\                fi
-        \\                cd "$target_dir" || return 1
-        \\                __wt_report_location "$output" "$target_dir"
-        \\            fi
-        \\            return $exit_code
-        \\            ;;
-        \\        *)
-        \\            command wt "$@"
-        \\            ;;
-        \\    esac
+    return 
+    \\    if [ "$#" -gt 0 ] && [ "${1#-}" != "$1" ]; then
+    \\        command wt "$@"
+    \\        return $?
+    \\    fi
+    \\
+    \\    __wt_report_location() {
+    \\        local worktree_root="$1"
+    \\        local target_dir="$2"
+    \\        local entered_subdir=""
+    \\        if [ "$target_dir" != "$worktree_root" ]; then
+    \\            entered_subdir="${target_dir#$worktree_root/}"
+    \\        fi
+    \\
+    \\        if [ -t 1 ]; then
+    \\            local c_reset=$'\033[0m'
+    \\            local c_label=$'\033[2m'
+    \\            local c_worktree=$'\033[36m'
+    \\            local c_subdir=$'\033[33m'
+    \\            printf "\n${c_label}Entered worktree:${c_reset} ${c_worktree}%s${c_reset}\n" "$worktree_root"
+    \\            if [ -n "$entered_subdir" ]; then
+    \\                printf "${c_label}Subdirectory:${c_reset} ${c_subdir}%s${c_reset}\n" "$entered_subdir"
+    \\            fi
+    \\        else
+    \\            printf "\nEntered worktree: %s\n" "$worktree_root"
+    \\            if [ -n "$entered_subdir" ]; then
+    \\                printf "Subdirectory: %s\n" "$entered_subdir"
+    \\            fi
+    \\        fi
+    \\    }
+    \\
+    \\    if [ "$#" -eq 0 ]; then
+    \\        local relative_subdir
+    \\        relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
+    \\        relative_subdir="${relative_subdir%/}"
+    \\        local selected_path
+    \\        selected_path=$(command wt __pick-worktree)
+    \\        local pick_exit=$?
+    \\        if [ $pick_exit -ne 0 ]; then
+    \\            return $pick_exit
+    \\        fi
+    \\        if [ -z "$selected_path" ]; then
+    \\            return 0
+    \\        fi
+    \\        if [ ! -d "$selected_path" ]; then
+    \\            echo "Error: selected worktree no longer exists: $selected_path" >&2
+    \\            return 1
+    \\        fi
+    \\        local target_dir="$selected_path"
+    \\        if [ -n "$relative_subdir" ]; then
+    \\            local candidate_dir="$selected_path/$relative_subdir"
+    \\            if [ -d "$candidate_dir" ]; then
+    \\                target_dir="$candidate_dir"
+    \\            else
+    \\                echo "Subdirectory missing in selected worktree, using root: $selected_path"
+    \\            fi
+    \\        fi
+    \\        cd "$target_dir" || return 1
+    \\        __wt_report_location "$selected_path" "$target_dir"
+    \\        return 0
+    \\    fi
+    \\
+    \\    case "$1" in
+    \\        new|add)
+    \\            local arg
+    \\            for arg in "${@:2}"; do
+    \\                if [ "$arg" = "-h" ] || [ "$arg" = "--help" ]; then
+    \\                    command wt "$@"
+    \\                    return $?
+    \\                fi
+    \\            done
+    \\
+    \\            local relative_subdir
+    \\            relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
+    \\            relative_subdir="${relative_subdir%/}"
+    \\            local output
+    \\            output=$(command wt "__new" "${@:2}")
+    \\            local exit_code=$?
+    \\            if [ $exit_code -eq 0 ] && [ -n "$output" ] && [ -d "$output" ]; then
+    \\                local target_dir="$output"
+    \\                if [ -n "$relative_subdir" ]; then
+    \\                    local candidate_dir="$output/$relative_subdir"
+    \\                    if [ -d "$candidate_dir" ]; then
+    \\                        target_dir="$candidate_dir"
+    \\                    else
+    \\                        echo "Subdirectory missing in new worktree, using root: $output"
+    \\                    fi
+    \\                fi
+    \\                cd "$target_dir" || return 1
+    \\                __wt_report_location "$output" "$target_dir"
+    \\            fi
+    \\            return $exit_code
+    \\            ;;
+    \\        *)
+    \\            command wt "$@"
+    \\            ;;
+    \\    esac
     ;
 }
 
 const posix_wrapper_body = buildPosixWrapperBody();
 
 fn emitZshInit() []const u8 {
-    return
+    return 
     \\# wt shell integration
     \\# Add to .zshrc: eval "$(wt shell-init zsh)"
     \\
@@ -272,14 +272,13 @@ fn emitZshInit() []const u8 {
 ++ "wt() {\n" ++ posix_wrapper_body ++ "\n}\n" ++
     \\
     \\compdef _wt wt
-;
-
+    ;
 }
 
 const zsh_init = emitZshInit();
 
 fn emitBashInit() []const u8 {
-    return
+    return 
     \\# wt shell integration
     \\# Add to .bashrc: eval "$(wt shell-init bash)"
     \\
@@ -385,14 +384,13 @@ fn emitBashInit() []const u8 {
     \\}
     \\
     \\complete -F _wt_bash_completion wt
-;
-
+    ;
 }
 
 const bash_init = emitBashInit();
 
 fn emitFishInit() []const u8 {
-    return
+    return 
     \\# wt shell integration
     \\# Add to config.fish: wt shell-init fish | source
     \\
@@ -509,14 +507,13 @@ fn emitFishInit() []const u8 {
     \\            return $status
     \\    end
     \\end
-;
-
+    ;
 }
 
 const fish_init = emitFishInit();
 
 fn emitNuInit() []const u8 {
-    return
+    return 
     \\# wt shell integration
     \\# Add to config.nu:
     \\# wt shell-init nu | save -f ~/.config/nushell/wt.nu
@@ -646,7 +643,11 @@ fn emitNuInit() []const u8 {
     \\def --env --wrapped wt [...args] {
     \\    if ($args | is-empty) {
     \\        let relative_subdir = (__wt_relative_subdir)
-    \\        let picked = (^wt __pick-worktree | complete)
+    \\        let picked = (try {
+    \\            ^wt __pick-worktree err> /dev/tty | complete
+    \\        } catch {
+    \\            ^wt __pick-worktree | complete
+    \\        })
     \\        __wt_print_stderr $picked
     \\        $env.LAST_EXIT_CODE = $picked.exit_code
     \\        if $picked.exit_code != 0 {
@@ -726,8 +727,7 @@ fn emitNuInit() []const u8 {
     \\        }
     \\    }
     \\}
-;
-
+    ;
 }
 
 const nu_init = emitNuInit();
@@ -880,6 +880,7 @@ test "nu init contains wrapper and completion definitions" {
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __complete-rm-branches err> /dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_shell_names\" []") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "\"zsh\" \"bash\" \"fish\" \"nu\" \"nushell\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __pick-worktree err> /dev/tty | complete") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __pick-worktree | complete") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __new ...$passthrough | complete") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "__wt_report_location $selected_path $target_dir") != null);

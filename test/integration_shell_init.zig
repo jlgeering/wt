@@ -11,6 +11,7 @@ const ShellRuntime = struct {
 const runtime_shells = [_]ShellRuntime{
     .{ .name = "zsh", .bin = "zsh" },
     .{ .name = "bash", .bin = "bash" },
+    .{ .name = "nu", .bin = "nu" },
 };
 
 const stub_wt_script =
@@ -81,12 +82,7 @@ fn runShellScenario(
     if (pick_path) |value| try env_map.put("WT_STUB_PICK_PATH", value);
     if (new_path) |value| try env_map.put("WT_STUB_NEW_PATH", value);
 
-    const prefix = if (std.mem.eql(u8, shell.name, "zsh")) "compdef() { :; }\n" else "";
-    const shell_program = try std.fmt.allocPrint(
-        allocator,
-        "{s}source \"{s}\"\nwt {s}\nprintf 'PWD=%s\\n' \"$PWD\"\n",
-        .{ prefix, init_script_path, invocation },
-    );
+    const shell_program = try buildShellProgram(allocator, shell, init_script_path, invocation);
     defer allocator.free(shell_program);
 
     return std.process.Child.run(.{
@@ -96,6 +92,42 @@ fn runShellScenario(
         .env_map = &env_map,
         .max_output_bytes = 1024 * 1024,
     });
+}
+
+fn buildShellProgram(
+    allocator: std.mem.Allocator,
+    shell: ShellRuntime,
+    init_script_path: []const u8,
+    invocation: []const u8,
+) ![]u8 {
+    if (std.mem.eql(u8, shell.name, "nu")) {
+        if (invocation.len == 0) {
+            return std.fmt.allocPrint(
+                allocator,
+                "source \"{s}\"\nwt\nprint ('PWD=' + $env.PWD)\n",
+                .{init_script_path},
+            );
+        }
+        return std.fmt.allocPrint(
+            allocator,
+            "source \"{s}\"\nwt {s}\nprint ('PWD=' + $env.PWD)\n",
+            .{ init_script_path, invocation },
+        );
+    }
+
+    const prefix = if (std.mem.eql(u8, shell.name, "zsh")) "compdef() { :; }\n" else "";
+    if (invocation.len == 0) {
+        return std.fmt.allocPrint(
+            allocator,
+            "{s}source \"{s}\"\nwt\nprintf 'PWD=%s\\n' \"$PWD\"\n",
+            .{ prefix, init_script_path },
+        );
+    }
+    return std.fmt.allocPrint(
+        allocator,
+        "{s}source \"{s}\"\nwt {s}\nprintf 'PWD=%s\\n' \"$PWD\"\n",
+        .{ prefix, init_script_path, invocation },
+    );
 }
 
 fn expectExitCode(result: std.process.Child.RunResult, expected_code: u8) !void {
@@ -118,7 +150,7 @@ test "integration: shell-init snippets carry shared parity markers across zsh/ba
     try std.testing.expectEqualStrings(try requireScript("nu"), try requireScript("nushell"));
 }
 
-test "integration: zsh/bash wrapper runtime parity for picker and new/add flows" {
+test "integration: zsh/bash/nu wrapper runtime parity for picker and new/add flows" {
     const allocator = std.testing.allocator;
     const rel_subdir = "sub/inner";
 
@@ -332,6 +364,6 @@ test "integration: zsh/bash wrapper runtime parity for picker and new/add flows"
     }
 
     if (!ran_any_shell) {
-        std.debug.print("SKIP runtime parity checks: zsh/bash not installed\n", .{});
+        std.debug.print("SKIP runtime parity checks: zsh/bash/nu not installed\n", .{});
     }
 }
