@@ -50,6 +50,10 @@ File: `test/integration_shell_init.zig`
 
 - PTY cancel-path coverage for bare `wt` picker across `zsh`/`bash`/`nu`.
 - Confirms picker prompt visibility and non-destructive cancellation (cwd unchanged).
+- Nushell PTY fallback-path coverage forces `err> /dev/tty` unavailability and verifies:
+  - picker stderr stays visible
+  - `$env.LAST_EXIT_CODE` preserves picker exit semantics
+  - cancellation remains non-destructive (cwd unchanged)
 
 ## Optional / Environment-Dependent Coverage
 
@@ -74,4 +78,4 @@ Optional local checks:
 
 ## Remaining Gaps / Next Beads
 
-1. Nushell PTY fallback runtime branch (`err> /dev/tty` failure) is only template-asserted today, not runtime-asserted. Follow-up: `wt-3v5`.
+1. Fish PTY picker cancel coverage remains temporarily disabled pending PTY watchdog/harness hardening (`wt-2eq`).
