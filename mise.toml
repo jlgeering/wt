@@ -49,8 +49,8 @@ zig build -Dtarget=aarch64-linux -Doptimize=ReleaseSafe -p dist/aarch64-linux
 """
 
 [tasks.check]
-description = "Run tests and build (pre-commit check)"
-depends = ["test", "build"]
+description = "Run formatting, tests, and build (pre-commit check)"
+depends = ["lint", "test", "build"]
 
 [tasks.release]
 description = "Cut and publish a release (usage: mise run release -- <X.Y.Z>)"

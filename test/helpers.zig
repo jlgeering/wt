@@ -59,6 +59,17 @@ pub fn createTestRepo(allocator: std.mem.Allocator) ![]u8 {
         allocator.free(stdout);
     }
     {
+        const excludes_path = try std.fs.path.join(allocator, &.{ repo_path, ".gitignore-global-empty" });
+        defer allocator.free(excludes_path);
+        try writeFile(excludes_path, "");
+        const stdout = try runChecked(
+            allocator,
+            repo_path,
+            &.{ "git", "config", "--local", "core.excludesfile", excludes_path },
+        );
+        allocator.free(stdout);
+    }
+    {
         const stdout = try runChecked(
             allocator,
             repo_path,
@@ -90,4 +101,49 @@ pub fn readFileAlloc(
     path: []const u8,
 ) ![]u8 {
     return std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+}
+
+pub fn copyFixtureTree(
+    allocator: std.mem.Allocator,
+    fixture_relative_path: []const u8,
+    destination_path: []const u8,
+) !void {
+    const fixture_root = try std.fs.cwd().realpathAlloc(allocator, fixture_relative_path);
+    defer allocator.free(fixture_root);
+
+    try copyDirRecursive(allocator, fixture_root, destination_path);
+}
+
+fn copyDirRecursive(
+    allocator: std.mem.Allocator,
+    source_dir_path: []const u8,
+    destination_dir_path: []const u8,
+) !void {
+    try std.fs.cwd().makePath(destination_dir_path);
+
+    var source_dir = try std.fs.cwd().openDir(source_dir_path, .{ .iterate = true });
+    defer source_dir.close();
+
+    var iter = source_dir.iterate();
+    while (try iter.next()) |entry| {
+        const source_path = try std.fs.path.join(allocator, &.{ source_dir_path, entry.name });
+        defer allocator.free(source_path);
+        const destination_path = try std.fs.path.join(allocator, &.{ destination_dir_path, entry.name });
+        defer allocator.free(destination_path);
+
+        switch (entry.kind) {
+            .directory => try copyDirRecursive(allocator, source_path, destination_path),
+            .file => {
+                const content = try std.fs.cwd().readFileAlloc(allocator, source_path, 16 * 1024 * 1024);
+                defer allocator.free(content);
+                try writeFile(destination_path, content);
+            },
+            .sym_link => {
+                var link_buf: [std.fs.max_path_bytes]u8 = undefined;
+                const link_target = try std.fs.cwd().readLink(source_path, &link_buf);
+                try std.fs.cwd().symLink(link_target, destination_path, .{});
+            },
+            else => {},
+        }
+    }
 }
