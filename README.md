@@ -122,6 +122,13 @@ mise run build:all
 mise run clean
 ```
 
+Run a filtered subset of tests while preserving `build.zig` module wiring:
+
+```bash
+mise x -- zig build test -- --test-filter "integration: PTY no-arg shell-init picker cancel works"
+mise x -- zig build test -Dtest_filter="release tool: semver validation"
+```
+
 ## Documentation
 
 - Canonical docs index: `docs/README.md`
