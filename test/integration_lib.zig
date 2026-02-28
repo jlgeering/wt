@@ -192,10 +192,14 @@ test "integration: merge-only local commit remains detectable as unique history"
     const main_commit_output = try git.runGit(allocator, repo_path, &.{ "commit", "-m", "main commit" });
     allocator.free(main_commit_output);
 
+    const default_branch_output = try git.runGit(allocator, repo_path, &.{ "rev-parse", "--abbrev-ref", "HEAD" });
+    defer allocator.free(default_branch_output);
+    const default_branch = std.mem.trim(u8, default_branch_output, " \t\r\n");
+
     const merge_output = try git.runGit(
         allocator,
         wt_path,
-        &.{ "merge", "--no-ff", "-m", "merge main", "main" },
+        &.{ "merge", "--no-ff", "-m", "merge default branch", default_branch },
     );
     allocator.free(merge_output);
 
@@ -255,17 +259,21 @@ test "integration: ahead and behind counts diverge after commits on both branche
     const main_commit_output = try git.runGit(allocator, repo_path, &.{ "commit", "-m", "main commit" });
     allocator.free(main_commit_output);
 
+    const default_branch_output = try git.runGit(allocator, repo_path, &.{ "rev-parse", "--abbrev-ref", "HEAD" });
+    defer allocator.free(default_branch_output);
+    const default_branch = std.mem.trim(u8, default_branch_output, " \t\r\n");
+
     const ahead = try git.countUnmergedCommits(
         allocator,
         repo_path,
-        "main",
+        default_branch,
         "feat-diverge-int",
     );
     const behind = try git.countUnmergedCommits(
         allocator,
         repo_path,
         "feat-diverge-int",
-        "main",
+        default_branch,
     );
 
     try std.testing.expectEqual(@as(usize, 1), ahead);
