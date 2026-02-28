@@ -1,6 +1,7 @@
 const std = @import("std");
 const config_mod = @import("config.zig");
 const git = @import("git.zig");
+const init_scan = @import("init_scan.zig");
 const init_rules = @import("init_rules.zig");
 
 pub const Section = init_rules.Section;
@@ -39,16 +40,15 @@ const DetectionContext = struct {
         invocation_subdir: []const u8,
         max_subproject_scan_depth: usize,
     ) !DetectionContext {
-        const visible_paths = try listVisibleRepoPaths(allocator, repo_root);
-        errdefer freeStringSlice(allocator, visible_paths);
-        insertionSortStrings(visible_paths);
+        const visible_paths = try init_scan.listVisibleRepoPaths(allocator, repo_root);
+        errdefer init_scan.freeStringSlice(allocator, visible_paths);
 
-        const repo_root_and_subproject_prefixes = try collectRepoRootAndSubprojectPrefixes(
+        const repo_root_and_subproject_prefixes = try init_scan.collectRepoRootAndSubprojectPrefixes(
             allocator,
             visible_paths,
             max_subproject_scan_depth,
         );
-        errdefer freeStringSlice(allocator, repo_root_and_subproject_prefixes);
+        errdefer init_scan.freeStringSlice(allocator, repo_root_and_subproject_prefixes);
 
         var context: DetectionContext = .{
             .repo_root = repo_root,
@@ -67,8 +67,8 @@ const DetectionContext = struct {
     }
 
     fn deinit(self: *DetectionContext, allocator: std.mem.Allocator) void {
-        freeStringSlice(allocator, self.visible_paths);
-        freeStringSlice(allocator, self.repo_root_and_subproject_prefixes);
+        init_scan.freeStringSlice(allocator, self.visible_paths);
+        init_scan.freeStringSlice(allocator, self.repo_root_and_subproject_prefixes);
     }
 
     fn prefixesForScope(self: *const DetectionContext, scope: init_rules.DetectionScope) []const []const u8 {
@@ -190,13 +190,13 @@ pub const EditableConfig = struct {
 
     pub fn renderToml(self: *const EditableConfig, allocator: std.mem.Allocator) ![]u8 {
         const copy_sorted = try cloneSortedStrings(allocator, self.copy_paths.items);
-        defer freeStringSlice(allocator, copy_sorted);
+        defer init_scan.freeStringSlice(allocator, copy_sorted);
 
         const symlink_sorted = try cloneSortedStrings(allocator, self.symlink_paths.items);
-        defer freeStringSlice(allocator, symlink_sorted);
+        defer init_scan.freeStringSlice(allocator, symlink_sorted);
 
         const run_sorted = try cloneSortedStrings(allocator, self.run_commands.items);
-        defer freeStringSlice(allocator, run_sorted);
+        defer init_scan.freeStringSlice(allocator, run_sorted);
 
         var out = std.array_list.Managed(u8).init(allocator);
         errdefer out.deinit();
@@ -375,13 +375,13 @@ fn patternMatchesAtPrefix(
         .exact => blk: {
             const rel_path = try joinRelPath(allocator, prefix, pattern.value);
             defer allocator.free(rel_path);
-            break :blk pathExists(allocator, context, rel_path);
+            break :blk init_scan.pathExists(allocator, context.repo_root, rel_path);
         },
         .prefix, .glob => blk: {
             if (std.mem.indexOfScalar(u8, pattern.value, '/')) |_| break :blk false;
 
-            const entry_names = try listEntryNamesAtPrefix(allocator, context, prefix);
-            defer freeStringSlice(allocator, entry_names);
+            const entry_names = try init_scan.listEntryNamesAtPrefix(allocator, context.repo_root, prefix);
+            defer init_scan.freeStringSlice(allocator, entry_names);
             for (entry_names) |entry_name| {
                 if (init_rules.matchesPattern(pattern, entry_name)) break :blk true;
             }
@@ -570,128 +570,6 @@ fn freeList(allocator: std.mem.Allocator, list: *std.array_list.Managed([]u8)) v
     list.deinit();
 }
 
-fn listVisibleRepoPaths(
-    allocator: std.mem.Allocator,
-    repo_root: []const u8,
-) ![]([]u8) {
-    const result = std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &.{
-            "git",
-            "ls-files",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-        },
-        .cwd = repo_root,
-        .max_output_bytes = 64 * 1024 * 1024,
-    }) catch {
-        return error.GitCommandFailed;
-    };
-    defer allocator.free(result.stderr);
-    defer allocator.free(result.stdout);
-
-    switch (result.term) {
-        .Exited => |code| if (code != 0) return error.GitCommandFailed,
-        else => return error.GitCommandFailed,
-    }
-
-    var paths = std.array_list.Managed([]u8).init(allocator);
-    errdefer freeStringItems(allocator, paths.items);
-    defer paths.deinit();
-
-    var lines = std.mem.splitScalar(u8, result.stdout, '\n');
-    while (lines.next()) |line| {
-        const trimmed = std.mem.trim(u8, line, " \t\r\n");
-        if (trimmed.len == 0) continue;
-        try paths.append(try allocator.dupe(u8, trimmed));
-    }
-
-    return paths.toOwnedSlice();
-}
-
-fn collectRepoRootAndSubprojectPrefixes(
-    allocator: std.mem.Allocator,
-    visible_paths: []const []u8,
-    max_subproject_scan_depth: usize,
-) ![]([]u8) {
-    var prefixes = std.array_list.Managed([]u8).init(allocator);
-    errdefer freeStringItems(allocator, prefixes.items);
-    defer prefixes.deinit();
-
-    var seen = std.StringHashMap(void).init(allocator);
-    defer seen.deinit();
-
-    const root = try allocator.dupe(u8, "");
-    errdefer allocator.free(root);
-    try seen.put(root, {});
-    try prefixes.append(root);
-
-    if (max_subproject_scan_depth == 0) {
-        return prefixes.toOwnedSlice();
-    }
-
-    for (visible_paths) |path| {
-        var segment_start: usize = 0;
-        var depth: usize = 0;
-
-        while (std.mem.indexOfScalarPos(u8, path, segment_start, '/')) |slash_index| {
-            const segment = path[segment_start..slash_index];
-            depth += 1;
-            if (depth > max_subproject_scan_depth) break;
-            if (segment.len > 0 and segment[0] == '.') break;
-
-            const prefix = path[0..slash_index];
-            if (seen.contains(prefix)) {
-                segment_start = slash_index + 1;
-                continue;
-            }
-
-            const duped = try allocator.dupe(u8, prefix);
-            errdefer allocator.free(duped);
-            try seen.put(duped, {});
-            try prefixes.append(duped);
-
-            segment_start = slash_index + 1;
-        }
-    }
-
-    insertionSortStrings(prefixes.items);
-    return prefixes.toOwnedSlice();
-}
-
-fn listEntryNamesAtPrefix(
-    allocator: std.mem.Allocator,
-    context: *const DetectionContext,
-    prefix: []const u8,
-) ![]([]u8) {
-    var names = std.array_list.Managed([]u8).init(allocator);
-    errdefer freeStringItems(allocator, names.items);
-    defer names.deinit();
-
-    const dir_path = if (prefix.len == 0)
-        try allocator.dupe(u8, context.repo_root)
-    else
-        try std.fs.path.join(allocator, &.{ context.repo_root, prefix });
-    defer allocator.free(dir_path);
-
-    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| switch (err) {
-        error.FileNotFound, error.NotDir => return try allocator.alloc([]u8, 0),
-        else => return err,
-    };
-    defer dir.close();
-
-    var iter = dir.iterate();
-    while (try iter.next()) |entry| {
-        switch (entry.kind) {
-            .file, .sym_link => try names.append(try allocator.dupe(u8, entry.name)),
-            else => {},
-        }
-    }
-
-    return names.toOwnedSlice();
-}
-
 fn discoverForPathRule(
     allocator: std.mem.Allocator,
     context: *const DetectionContext,
@@ -707,7 +585,7 @@ fn discoverForPathRule(
                 .exact => {
                     const rel_path = try joinRelPath(allocator, prefix, pattern.value);
                     defer allocator.free(rel_path);
-                    if (pathExists(allocator, context, rel_path)) {
+                    if (init_scan.pathExists(allocator, context.repo_root, rel_path)) {
                         matched = true;
                         _ = try addRecommendationIfMissing(allocator, recs, .{
                             .rule_id = rule.id,
@@ -724,8 +602,8 @@ fn discoverForPathRule(
                         continue;
                     }
 
-                    const entry_names = try listEntryNamesAtPrefix(allocator, context, prefix);
-                    defer freeStringSlice(allocator, entry_names);
+                    const entry_names = try init_scan.listEntryNamesAtPrefix(allocator, context.repo_root, prefix);
+                    defer init_scan.freeStringSlice(allocator, entry_names);
                     for (entry_names) |entry_name| {
                         if (!init_rules.matchesPattern(pattern, entry_name)) continue;
                         matched = true;
@@ -750,17 +628,6 @@ fn discoverForPathRule(
 fn joinRelPath(allocator: std.mem.Allocator, prefix: []const u8, leaf: []const u8) ![]u8 {
     if (prefix.len == 0) return allocator.dupe(u8, leaf);
     return std.fs.path.join(allocator, &.{ prefix, leaf });
-}
-
-fn pathExists(allocator: std.mem.Allocator, context: *const DetectionContext, rel_path: []const u8) bool {
-    const abs_path = std.fs.path.join(allocator, &.{ context.repo_root, rel_path }) catch return false;
-    defer allocator.free(abs_path);
-
-    if (std.fs.cwd().access(abs_path, .{})) |_| {
-        return true;
-    } else |_| {
-        return false;
-    }
 }
 
 fn addRecommendationIfMissing(
@@ -865,11 +732,6 @@ fn insertionSortStrings(items: []([]u8)) void {
         }
         items[j] = current;
     }
-}
-
-fn freeStringSlice(allocator: std.mem.Allocator, items: []([]u8)) void {
-    for (items) |item| allocator.free(item);
-    allocator.free(items);
 }
 
 fn freeStringItems(allocator: std.mem.Allocator, items: []([]u8)) void {
