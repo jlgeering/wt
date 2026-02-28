@@ -54,11 +54,11 @@ depends = ["lint", "test", "build"]
 
 [tasks.release]
 description = "Cut and publish a release (usage: mise run release -- <X.Y.Z>)"
+usage = '''
+arg "<version>"
+'''
 run = """
-VERSION="{{arg(rest=true)}}"
-mkdir -p dist/release
-printf '%s' "$VERSION" > dist/release/.current-version
-mise run release:pipeline
+WT_RELEASE_VERSION="$usage_version" mise run release:pipeline
 """
 
 [tasks."release:pipeline"]
@@ -69,8 +69,11 @@ depends = ["release:gh:verify-latest"]
 [tasks."release:validate"]
 description = "Validate release preconditions and prepare notes/staging"
 hide = true
+usage = '''
+arg "[version]" env="WT_RELEASE_VERSION"
+'''
 run = """
-VERSION="$(cat dist/release/.current-version 2>/dev/null || true)"
+VERSION="$usage_version"
 if [ -z "$VERSION" ]; then
   echo "error: missing release version context; run 'mise run release -- <X.Y.Z>'" >&2
   exit 1
@@ -87,8 +90,11 @@ mise x -- zig run src/tools/release.zig -- extract-notes --version "$VERSION" --
 description = "Build release binaries for macOS"
 hide = true
 depends = ["release:validate"]
+usage = '''
+arg "[version]" env="WT_RELEASE_VERSION"
+'''
 run = """
-VERSION="$(cat dist/release/.current-version)"
+VERSION="$usage_version"
 TAG="v$VERSION"
 BUILD_ROOT="dist/release/$TAG/build"
 zig build -Dtarget=aarch64-macos -Doptimize=ReleaseSafe -Dapp_version="$VERSION" -p "$BUILD_ROOT/aarch64-macos"
@@ -99,8 +105,11 @@ zig build -Dtarget=x86_64-macos -Doptimize=ReleaseSafe -Dapp_version="$VERSION" 
 description = "Build release binaries for Linux"
 hide = true
 depends = ["release:validate"]
+usage = '''
+arg "[version]" env="WT_RELEASE_VERSION"
+'''
 run = """
-VERSION="$(cat dist/release/.current-version)"
+VERSION="$usage_version"
 TAG="v$VERSION"
 BUILD_ROOT="dist/release/$TAG/build"
 zig build -Dtarget=x86_64-linux -Doptimize=ReleaseSafe -Dapp_version="$VERSION" -p "$BUILD_ROOT/x86_64-linux"
@@ -111,8 +120,11 @@ zig build -Dtarget=aarch64-linux -Doptimize=ReleaseSafe -Dapp_version="$VERSION"
 description = "Build release binaries for Windows"
 hide = true
 depends = ["release:validate"]
+usage = '''
+arg "[version]" env="WT_RELEASE_VERSION"
+'''
 run = """
-VERSION="$(cat dist/release/.current-version)"
+VERSION="$usage_version"
 TAG="v$VERSION"
 BUILD_ROOT="dist/release/$TAG/build"
 zig build -Dtarget=x86_64-windows -Doptimize=ReleaseSafe -Dapp_version="$VERSION" -p "$BUILD_ROOT/x86_64-windows"
@@ -127,8 +139,11 @@ depends = ["check", "release:build:mac", "release:build:linux", "release:build:w
 description = "Verify host artifact and package release archives + checksums"
 hide = true
 depends = ["release:build"]
+usage = '''
+arg "[version]" env="WT_RELEASE_VERSION"
+'''
 run = """
-VERSION="$(cat dist/release/.current-version)"
+VERSION="$usage_version"
 TAG="v$VERSION"
 BUILD_ROOT="dist/release/$TAG/build"
 DIST_DIR="dist/release/$TAG/dist"
@@ -141,8 +156,11 @@ mise x -- zig run src/tools/release.zig -- verify-checksums --dist-dir "$DIST_DI
 description = "Push main and release tag"
 hide = true
 depends = ["release:package"]
+usage = '''
+arg "[version]" env="WT_RELEASE_VERSION"
+'''
 run = """
-VERSION="$(cat dist/release/.current-version)"
+VERSION="$usage_version"
 TAG="v$VERSION"
 git push github main
 git tag -a "$TAG" -m "wt $TAG"
@@ -153,8 +171,11 @@ git push github "$TAG"
 description = "Create draft GitHub release with required assets"
 hide = true
 depends = ["release:git"]
+usage = '''
+arg "[version]" env="WT_RELEASE_VERSION"
+'''
 run = """
-VERSION="$(cat dist/release/.current-version)"
+VERSION="$usage_version"
 TAG="v$VERSION"
 STAGE_ROOT="dist/release/$TAG"
 DIST_DIR="$STAGE_ROOT/dist"
@@ -177,8 +198,11 @@ mise x -- gh release create "$TAG" \
 description = "Verify draft release state and contents"
 hide = true
 depends = ["release:gh:create-draft"]
+usage = '''
+arg "[version]" env="WT_RELEASE_VERSION"
+'''
 run = """
-VERSION="$(cat dist/release/.current-version)"
+VERSION="$usage_version"
 TAG="v$VERSION"
 DRAFT_STATE="$(mise x -- gh release view "$TAG" --repo "jlgeering/wt" --json isDraft --jq '.isDraft')"
 if [ "$DRAFT_STATE" != "true" ]; then
@@ -201,8 +225,11 @@ fi
 description = "Publish release and mark latest"
 hide = true
 depends = ["release:gh:verify-draft"]
+usage = '''
+arg "[version]" env="WT_RELEASE_VERSION"
+'''
 run = """
-VERSION="$(cat dist/release/.current-version)"
+VERSION="$usage_version"
 TAG="v$VERSION"
 mise x -- gh release edit "$TAG" --repo "jlgeering/wt" --draft=false --latest
 """
@@ -211,8 +238,11 @@ mise x -- gh release edit "$TAG" --repo "jlgeering/wt" --draft=false --latest
 description = "Verify latest release points at published tag"
 hide = true
 depends = ["release:gh:publish"]
+usage = '''
+arg "[version]" env="WT_RELEASE_VERSION"
+'''
 run = """
-VERSION="$(cat dist/release/.current-version)"
+VERSION="$usage_version"
 TAG="v$VERSION"
 LATEST_TAG="$(mise x -- gh api 'repos/jlgeering/wt/releases/latest' --jq '.tag_name')"
 if [ "$LATEST_TAG" != "$TAG" ]; then
