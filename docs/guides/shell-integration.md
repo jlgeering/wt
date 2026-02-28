@@ -84,10 +84,13 @@ The `nu` integration provides:
 - the same no-arg picker and `new|add` auto-`cd` behavior as zsh/bash.
 - completion for subcommands and key positionals (`new|add`, `rm`, `shell-init`).
 - shell aliases accepted by `shell-init`: `zsh`, `bash`, `fish`, `nu` (`nushell` is also accepted).
+- no-arg picker stderr handling that prefers `err> /dev/tty` for interactive prompts, then falls back to captured stderr when `/dev/tty` is unavailable.
 
 ## Behavior
 
 - Running `wt` with no arguments opens a worktree picker.
+- In Nushell, the no-arg picker first runs `^wt __pick-worktree err> /dev/tty | complete` so interactive prompt/errors stay visible while stdout remains parseable.
+- If `/dev/tty` is unavailable (for example in non-interactive script contexts), Nushell falls back to `^wt __pick-worktree | complete`, reprints captured stderr, and preserves the picker exit code in `$env.LAST_EXIT_CODE`.
 - Before picker selection, it captures the current repo-relative subdirectory via `git rev-parse --show-prefix`.
 - After selection:
   - it prefers `cd "<selected-worktree>/<relative-subdir>"` when that path exists.

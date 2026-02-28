@@ -880,8 +880,12 @@ test "nu init contains wrapper and completion definitions" {
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __complete-rm-branches err> /dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_shell_names\" []") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "\"zsh\" \"bash\" \"fish\" \"nu\" \"nushell\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "let picked = (try {") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __pick-worktree err> /dev/tty | complete") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "} catch {") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __pick-worktree | complete") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "__wt_print_stderr $picked") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "$env.LAST_EXIT_CODE = $picked.exit_code") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __new ...$passthrough | complete") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "__wt_report_location $selected_path $target_dir") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "__wt_report_location $output $target_dir") != null);
