@@ -143,6 +143,14 @@ fn localCommitReference(wt: git.WorktreeInfo) []const u8 {
     return wt.branch orelse wt.head;
 }
 
+fn primaryCheckoutRef(main_wt: git.WorktreeInfo) []const u8 {
+    return main_wt.branch orelse main_wt.head;
+}
+
+fn writeLocalCommitWarning(stdout: anytype, base_ref: []const u8) !void {
+    try stdout.print("- worktree has commits not in primary checkout ({s})\n", .{base_ref});
+}
+
 fn isInteractiveSession() bool {
     return std.fs.File.stdin().isTty() and std.fs.File.stdout().isTty();
 }
@@ -532,6 +540,7 @@ fn resolvePickerMode(
 fn inspectCandidate(
     allocator: std.mem.Allocator,
     main_path: []const u8,
+    base_ref: []const u8,
     wt: git.WorktreeInfo,
 ) !RemovalCandidate {
     const status_output = try git.runGit(allocator, wt.path, &.{ "status", "--porcelain" });
@@ -539,7 +548,7 @@ fn inspectCandidate(
 
     const status = git.parseStatusPorcelain(status_output);
 
-    const unmerged = try git.countUnmergedCommits(allocator, main_path, "HEAD", localCommitReference(wt));
+    const unmerged = try git.countUnmergedCommits(allocator, main_path, base_ref, localCommitReference(wt));
     const has_local_commits = blk: {
         if (unmerged == 0) break :blk false;
 
@@ -548,7 +557,7 @@ fn inspectCandidate(
         const unique_local = git.countPatchUniqueCommits(
             allocator,
             main_path,
-            "HEAD",
+            base_ref,
             localCommitReference(wt),
         ) catch unmerged;
         break :blk unique_local > 0;
@@ -569,13 +578,14 @@ fn inspectCandidate(
 fn buildCandidates(
     allocator: std.mem.Allocator,
     main_path: []const u8,
+    base_ref: []const u8,
     secondary_worktrees: []const git.WorktreeInfo,
 ) ![]RemovalCandidate {
     var candidates = std.array_list.Managed(RemovalCandidate).init(allocator);
     errdefer candidates.deinit();
 
     for (secondary_worktrees) |wt| {
-        const candidate = try inspectCandidate(allocator, main_path, wt);
+        const candidate = try inspectCandidate(allocator, main_path, base_ref, wt);
         try candidates.append(candidate);
     }
 
@@ -589,13 +599,14 @@ fn confirmUnsafeRemoval(
     modified: usize,
     untracked: usize,
     has_local_commits: bool,
+    base_ref: []const u8,
 ) !bool {
     try stdout.print("Warning: unsafe worktree removal for '{s}'\n", .{target_name});
     if (modified > 0 or untracked > 0) {
         try stdout.print("- dirty worktree: {d} modified, {d} untracked\n", .{ modified, untracked });
     }
     if (has_local_commits) {
-        try stdout.writeAll("- worktree has commits not in main checkout\n");
+        try writeLocalCommitWarning(stdout, base_ref);
     }
     while (true) {
         try stdout.print("Remove anyway? [y/N]: ", .{});
@@ -630,6 +641,7 @@ fn removeCandidate(
     allocator: std.mem.Allocator,
     candidate: RemovalCandidate,
     main_path: []const u8,
+    base_ref: []const u8,
     force: bool,
 ) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
@@ -656,6 +668,7 @@ fn removeCandidate(
             candidate.modified,
             candidate.untracked,
             candidate.has_local_commits,
+            base_ref,
         ) catch {
             try ui.printLevel(stderr, use_color, .err, "failed to read confirmation", .{});
             std.process.exit(1);
@@ -725,7 +738,9 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     };
     defer allocator.free(current_worktree_path);
 
-    const main_path = worktrees[0].path;
+    const main_worktree = worktrees[0];
+    const main_path = main_worktree.path;
+    const base_ref = primaryCheckoutRef(main_worktree);
 
     if (options.branch_arg) |branch| {
         const wt_info = findWorktreeByBranch(worktrees, branch) orelse {
@@ -745,12 +760,12 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
             std.process.exit(1);
         }
 
-        const candidate = inspectCandidate(allocator, main_path, wt_info) catch {
+        const candidate = inspectCandidate(allocator, main_path, base_ref, wt_info) catch {
             try ui.printLevel(stderr, use_stderr_color, .err, "could not inspect worktree for branch '{s}'", .{branch});
             std.process.exit(1);
         };
 
-        try removeCandidate(allocator, candidate, main_path, options.force);
+        try removeCandidate(allocator, candidate, main_path, base_ref, options.force);
         return;
     }
 
@@ -793,7 +808,7 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
         std.process.exit(1);
     }
 
-    const candidates = buildCandidates(allocator, main_path, split.removable) catch {
+    const candidates = buildCandidates(allocator, main_path, base_ref, split.removable) catch {
         try ui.printLevel(stderr, use_stderr_color, .err, "could not build worktree removal candidates", .{});
         std.process.exit(1);
     };
@@ -833,7 +848,7 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
         return;
     }
 
-    try removeCandidate(allocator, candidates[selected_index.?], main_path, options.force);
+    try removeCandidate(allocator, candidates[selected_index.?], main_path, base_ref, options.force);
 }
 
 test "parsePickerMode accepts known values" {
@@ -917,6 +932,35 @@ test "localCommitReference falls back to HEAD for detached worktrees" {
 
     try std.testing.expectEqualStrings("feat", localCommitReference(branched));
     try std.testing.expectEqualStrings("def456", localCommitReference(detached));
+}
+
+test "primaryCheckoutRef prefers branch and falls back to HEAD commit" {
+    const branched: git.WorktreeInfo = .{
+        .path = "/tmp/repo",
+        .head = "abc123",
+        .branch = "trunk",
+        .is_bare = false,
+    };
+    const detached: git.WorktreeInfo = .{
+        .path = "/tmp/repo",
+        .head = "def456",
+        .branch = null,
+        .is_bare = false,
+    };
+
+    try std.testing.expectEqualStrings("trunk", primaryCheckoutRef(branched));
+    try std.testing.expectEqualStrings("def456", primaryCheckoutRef(detached));
+}
+
+test "writeLocalCommitWarning uses derived primary checkout ref" {
+    var output_buffer: [256]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&output_buffer);
+
+    try writeLocalCommitWarning(fbs.writer(), "develop");
+
+    const written = fbs.getWritten();
+    try std.testing.expect(std.mem.indexOf(u8, written, "develop") != null);
+    try std.testing.expect(std.mem.indexOf(u8, written, "main checkout") == null);
 }
 
 test "formatCandidateSummary uses dirty and local-commits markers" {

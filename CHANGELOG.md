@@ -10,6 +10,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Fixed
 
 - Improved `wt rm` local-commit safety checks to ignore patch-equivalent commits, reducing false positive blocks when histories differ but content matches.
+- Fixed `wt rm` local-commit base-ref resolution to follow the primary worktree branch (with detached-HEAD fallback), avoiding hardcoded `main` assumptions.
 - Corrected Nushell shell-init picker behavior to avoid unsafe TTY/stderr interactions and expanded runtime parity coverage for picker flows.
 
 ## [0.2.0] - 2026-02-28
