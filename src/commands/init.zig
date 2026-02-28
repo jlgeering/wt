@@ -331,17 +331,6 @@ fn getRepoRoot(allocator: std.mem.Allocator) ![]u8 {
     return allocator.dupe(u8, trimmed);
 }
 
-fn getRepoInvocationSubdir(allocator: std.mem.Allocator) ![]u8 {
-    const output = git.runGit(allocator, null, &.{ "rev-parse", "--show-prefix" }) catch {
-        return error.NotGitRepository;
-    };
-    defer allocator.free(output);
-
-    const trimmed = std.mem.trim(u8, output, " \t\r\n");
-    const no_trailing_sep = std.mem.trimRight(u8, trimmed, "/\\");
-    return allocator.dupe(u8, no_trailing_sep);
-}
-
 fn writeFile(path: []const u8, content: []const u8) !void {
     const file = try std.fs.cwd().createFile(path, .{});
     defer file.close();
@@ -366,12 +355,6 @@ pub fn run(allocator: std.mem.Allocator) !void {
     };
     defer allocator.free(repo_root);
 
-    const invocation_subdir = getRepoInvocationSubdir(allocator) catch {
-        try ui.printLevel(stderr, use_stderr_color, .err, "not a git repository or git not found", .{});
-        std.process.exit(1);
-    };
-    defer allocator.free(invocation_subdir);
-
     const config_path = try std.fs.path.join(allocator, &.{ repo_root, ".wt.toml" });
     defer allocator.free(config_path);
 
@@ -388,9 +371,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
 
     try stdout.print("\nRepository: {s}\n", .{repo_root});
 
-    const recommendations = try init_planner.discoverRecommendationsWithOptions(allocator, repo_root, .{
-        .invocation_subdir = invocation_subdir,
-    });
+    const recommendations = try init_planner.discoverRecommendations(allocator, repo_root);
     defer init_planner.freeRecommendations(allocator, recommendations);
 
     for (recommendations) |rec| {

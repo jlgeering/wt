@@ -4,7 +4,9 @@
 
 ## Behavior
 
-- Scans both the repo root and the current repo-relative subdirectory (when invoked below root) for common local files, then builds a full proposal for `copy`, `symlink`, and `run` entries.
+- Scans from the repo root with a bounded subproject discovery pass, then builds one repo-wide proposal for `copy`, `symlink`, and `run` entries regardless of the current working directory.
+- Default subproject scan depth is 2 levels below repo root (configurable internally; no CLI flag yet).
+- Subproject discovery respects `.gitignore`/standard Git excludes and skips hidden subproject roots.
 - Keeps already-matching recommendations automatically on re-runs.
 - Includes anti-pattern cleanup removals in the proposal.
 - Shows anti-pattern warnings only when anti-patterns are actually detected.
@@ -28,8 +30,9 @@ Built-in recommendation patterns currently include:
 
 Built-in command recommendations currently include:
 
-- `mise trust` (when mise config is detected in active detection scope and at least one matching scope is already trusted)
+- `mise trust` (when mise config is detected in active detection scope and matching scope is already trusted)
 - `direnv allow` (when `.envrc` is detected)
+- For subproject-scoped command recommendations, `wt init` writes repo-root-relative prefixed commands such as `cd apps/api && mise trust`.
 
 Built-in anti-pattern checks include:
 
