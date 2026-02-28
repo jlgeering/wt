@@ -132,29 +132,25 @@ pub fn countUnmergedCommits(
     return parseCountOutput(output);
 }
 
-/// Parse output from `git cherry` and count only patch-unique (`+`) commits.
-pub fn parseCherryPlusCount(output: []const u8) usize {
-    var count: usize = 0;
-    var lines = std.mem.splitScalar(u8, output, '\n');
-    while (lines.next()) |line| {
-        const trimmed = std.mem.trim(u8, line, " \t\r\n");
-        if (trimmed.len == 0) continue;
-        if (trimmed[0] == '+') count += 1;
-    }
-    return count;
-}
-
-/// Count commits in `branch_ref` that are patch-unique versus `base_ref`.
+/// Count commits in `branch_ref` that are not patch-equivalent to `base_ref`.
+/// Uses `--cherry-pick` to ignore equivalent patches with different SHAs.
 pub fn countPatchUniqueCommits(
     allocator: std.mem.Allocator,
     cwd: ?[]const u8,
     base_ref: []const u8,
     branch_ref: []const u8,
 ) !usize {
-    const output = try runGit(allocator, cwd, &.{ "cherry", base_ref, branch_ref });
+    const range = try std.fmt.allocPrint(allocator, "{s}...{s}", .{ base_ref, branch_ref });
+    defer allocator.free(range);
+
+    const output = try runGit(
+        allocator,
+        cwd,
+        &.{ "rev-list", "--count", "--right-only", "--cherry-pick", range },
+    );
     defer allocator.free(output);
 
-    return parseCherryPlusCount(output);
+    return parseCountOutput(output);
 }
 
 /// Run a git command and return stdout. Caller owns returned memory.
@@ -306,11 +302,7 @@ test "parseCountOutput treats empty output as zero" {
     try std.testing.expectEqual(@as(usize, 0), count);
 }
 
-test "parseCherryPlusCount counts only patch-unique entries" {
-    const input =
-        \\+ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-        \\- bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-        \\+ cccccccccccccccccccccccccccccccccccccccc
-    ;
-    try std.testing.expectEqual(@as(usize, 2), parseCherryPlusCount(input));
+test "parseCountOutput parses zero value with newline" {
+    const count = try parseCountOutput("0\n");
+    try std.testing.expectEqual(@as(usize, 0), count);
 }
