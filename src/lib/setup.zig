@@ -59,8 +59,47 @@ fn pathIssueLabel(issue: PathValidationIssue) []const u8 {
     };
 }
 
+fn copyPathPortable(allocator: std.mem.Allocator, source: []const u8, target: []const u8) !void {
+    var source_dir = std.fs.cwd().openDir(source, .{ .iterate = true }) catch |err| switch (err) {
+        error.NotDir => {
+            if (std.fs.path.dirname(target)) |parent| {
+                try std.fs.cwd().makePath(parent);
+            }
+            try std.fs.cwd().copyFile(source, std.fs.cwd(), target, .{});
+            return;
+        },
+        else => return err,
+    };
+    defer source_dir.close();
+
+    try std.fs.cwd().makePath(target);
+
+    var walker = try source_dir.walk(allocator);
+    defer walker.deinit();
+
+    while (try walker.next()) |entry| {
+        const entry_target = try std.fs.path.join(allocator, &.{ target, entry.path });
+        defer allocator.free(entry_target);
+
+        if (std.fs.path.dirname(entry_target)) |parent| {
+            try std.fs.cwd().makePath(parent);
+        }
+
+        switch (entry.kind) {
+            .directory => try std.fs.cwd().makePath(entry_target),
+            .file => try source_dir.copyFile(entry.path, std.fs.cwd(), entry_target, .{}),
+            .sym_link => {
+                var link_target_buf: [std.fs.max_path_bytes]u8 = undefined;
+                const link_target = try source_dir.readLink(entry.path, &link_target_buf);
+                try std.fs.cwd().symLink(link_target, entry_target, .{});
+            },
+            else => return error.UnsupportedSetupCopyEntryKind,
+        }
+    }
+}
+
 /// Copy a path from source to target using copy-on-write where available.
-/// Shells out to `cp` for CoW support. Skips if source missing or target exists.
+/// Uses native filesystem APIs on Windows. Skips if source missing or target exists.
 pub fn cowCopy(
     allocator: std.mem.Allocator,
     source_root: []const u8,
@@ -99,38 +138,54 @@ pub fn cowCopy(
         std.fs.cwd().makePath(parent) catch {};
     }
 
-    // Platform-specific CoW copy
-    const cp_args: []const []const u8 = switch (builtin.os.tag) {
-        .macos => &.{ "cp", "-cR", source, target },
-        .linux => &.{ "cp", "-R", "--reflink=auto", source, target },
-        else => &.{ "cp", "-R", source, target },
+    const used_cow = switch (builtin.os.tag) {
+        .windows => false,
+        else => true,
     };
 
-    const result = std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = cp_args,
-    }) catch {
-        logMessage(.warn, "copy failed for {s}", .{rel_path});
-        return;
-    };
-    allocator.free(result.stdout);
-    allocator.free(result.stderr);
-
-    switch (result.term) {
-        .Exited => |code| {
-            if (code != 0) {
-                logMessage(.warn, "copy failed for {s}", .{rel_path});
-                return;
-            }
-        },
-        else => {
+    if (builtin.os.tag == .windows) {
+        copyPathPortable(allocator, source, target) catch {
             logMessage(.warn, "copy failed for {s}", .{rel_path});
             return;
-        },
+        };
+    } else {
+        // Platform-specific CoW copy.
+        const cp_args: []const []const u8 = switch (builtin.os.tag) {
+            .macos => &.{ "cp", "-cR", source, target },
+            .linux => &.{ "cp", "-R", "--reflink=auto", source, target },
+            else => &.{ "cp", "-R", source, target },
+        };
+
+        const result = std.process.Child.run(.{
+            .allocator = allocator,
+            .argv = cp_args,
+        }) catch {
+            logMessage(.warn, "copy failed for {s}", .{rel_path});
+            return;
+        };
+        allocator.free(result.stdout);
+        allocator.free(result.stderr);
+
+        switch (result.term) {
+            .Exited => |code| {
+                if (code != 0) {
+                    logMessage(.warn, "copy failed for {s}", .{rel_path});
+                    return;
+                }
+            },
+            else => {
+                logMessage(.warn, "copy failed for {s}", .{rel_path});
+                return;
+            },
+        }
     }
 
     if (mode == .human) {
-        logMessage(.success, "copied (CoW) {s}", .{rel_path});
+        if (used_cow) {
+            logMessage(.success, "copied (CoW) {s}", .{rel_path});
+        } else {
+            logMessage(.success, "copied {s}", .{rel_path});
+        }
     }
 }
 
@@ -260,4 +315,66 @@ test "detectUnsafeRelPath rejects absolute paths" {
     const absolute_sample = if (builtin.os.tag == .windows) "C:\\tmp\\file" else "/tmp/file";
     try std.testing.expectEqual(PathValidationIssue.absolute, detectUnsafeRelPath(absolute_sample).?);
     try std.testing.expectEqual(PathValidationIssue.absolute, detectUnsafeRelPath("D:\\data").?);
+}
+
+test "copyPathPortable copies single file" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.writeFile(.{
+        .sub_path = "source.txt",
+        .data = "portable copy payload\n",
+    });
+
+    const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+
+    const source = try std.fs.path.join(std.testing.allocator, &.{ root, "source.txt" });
+    defer std.testing.allocator.free(source);
+    const target = try std.fs.path.join(std.testing.allocator, &.{ root, "nested", "target.txt" });
+    defer std.testing.allocator.free(target);
+
+    try copyPathPortable(std.testing.allocator, source, target);
+
+    const copied = try std.fs.cwd().readFileAlloc(std.testing.allocator, target, 1024);
+    defer std.testing.allocator.free(copied);
+    try std.testing.expectEqualStrings("portable copy payload\n", copied);
+}
+
+test "copyPathPortable copies directory tree" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.makePath("source/subdir/beta");
+    try tmp.dir.writeFile(.{
+        .sub_path = "source/subdir/alpha.txt",
+        .data = "alpha\n",
+    });
+    try tmp.dir.writeFile(.{
+        .sub_path = "source/subdir/beta/gamma.txt",
+        .data = "gamma\n",
+    });
+
+    const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+
+    const source = try std.fs.path.join(std.testing.allocator, &.{ root, "source" });
+    defer std.testing.allocator.free(source);
+    const target = try std.fs.path.join(std.testing.allocator, &.{ root, "copied" });
+    defer std.testing.allocator.free(target);
+
+    try copyPathPortable(std.testing.allocator, source, target);
+
+    const alpha = try std.fs.path.join(std.testing.allocator, &.{ target, "subdir", "alpha.txt" });
+    defer std.testing.allocator.free(alpha);
+    const gamma = try std.fs.path.join(std.testing.allocator, &.{ target, "subdir", "beta", "gamma.txt" });
+    defer std.testing.allocator.free(gamma);
+
+    const alpha_data = try std.fs.cwd().readFileAlloc(std.testing.allocator, alpha, 1024);
+    defer std.testing.allocator.free(alpha_data);
+    try std.testing.expectEqualStrings("alpha\n", alpha_data);
+
+    const gamma_data = try std.fs.cwd().readFileAlloc(std.testing.allocator, gamma, 1024);
+    defer std.testing.allocator.free(gamma_data);
+    try std.testing.expectEqualStrings("gamma\n", gamma_data);
 }
