@@ -17,10 +17,11 @@
 1. Make `wt init` detection repo-wide and cwd-invariant by default.
 2. Replace invocation-driven default scope with repo-root + discovered subprojects.
 3. Discover subprojects with a bounded scan (default depth: 2).
-4. Respect `.gitignore`/standard Git excludes during discovery.
+4. Respect `.gitignore`/standard Git excludes during subproject discovery.
 5. Skip hidden subproject roots during recursive prefix discovery.
 6. For command recommendations detected in subprojects, emit repo-relative prefixed commands (for example `cd apps/api && mise trust`).
 7. Keep trust gating behavior: only recommend `mise trust` for scopes already trusted.
+8. Detect local setup files from filesystem within discovered roots, even when those specific files are ignored.
 
 ## Consequences
 

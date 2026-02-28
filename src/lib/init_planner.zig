@@ -27,7 +27,6 @@ const DetectionContext = struct {
     repo_root: []const u8,
     invocation_subdir: []const u8,
     visible_paths: []([]u8),
-    visible_path_set: std.StringHashMap(void),
     repo_root_and_subproject_prefixes: []([]u8),
     root_only_prefixes: [1][]const u8 = .{""},
     invocation_only_prefixes: [1][]const u8 = .{""},
@@ -44,12 +43,6 @@ const DetectionContext = struct {
         errdefer freeStringSlice(allocator, visible_paths);
         insertionSortStrings(visible_paths);
 
-        var visible_path_set = std.StringHashMap(void).init(allocator);
-        errdefer visible_path_set.deinit();
-        for (visible_paths) |path| {
-            try visible_path_set.put(path, {});
-        }
-
         const repo_root_and_subproject_prefixes = try collectRepoRootAndSubprojectPrefixes(
             allocator,
             visible_paths,
@@ -61,7 +54,6 @@ const DetectionContext = struct {
             .repo_root = repo_root,
             .invocation_subdir = invocation_subdir,
             .visible_paths = visible_paths,
-            .visible_path_set = visible_path_set,
             .repo_root_and_subproject_prefixes = repo_root_and_subproject_prefixes,
         };
 
@@ -75,7 +67,6 @@ const DetectionContext = struct {
     }
 
     fn deinit(self: *DetectionContext, allocator: std.mem.Allocator) void {
-        self.visible_path_set.deinit();
         freeStringSlice(allocator, self.visible_paths);
         freeStringSlice(allocator, self.repo_root_and_subproject_prefixes);
     }
@@ -384,13 +375,14 @@ fn patternMatchesAtPrefix(
         .exact => blk: {
             const rel_path = try joinRelPath(allocator, prefix, pattern.value);
             defer allocator.free(rel_path);
-            break :blk context.visible_path_set.contains(rel_path);
+            break :blk pathExists(allocator, context, rel_path);
         },
         .prefix, .glob => blk: {
             if (std.mem.indexOfScalar(u8, pattern.value, '/')) |_| break :blk false;
 
-            for (context.visible_paths) |visible_path| {
-                const entry_name = directFileNameForPrefix(visible_path, prefix) orelse continue;
+            const entry_names = try listEntryNamesAtPrefix(allocator, context, prefix);
+            defer freeStringSlice(allocator, entry_names);
+            for (entry_names) |entry_name| {
                 if (init_rules.matchesPattern(pattern, entry_name)) break :blk true;
             }
             break :blk false;
@@ -423,21 +415,6 @@ fn resolveScopeCwd(allocator: std.mem.Allocator, repo_root: []const u8, prefix: 
 fn commandForPrefix(allocator: std.mem.Allocator, prefix: []const u8, command: []const u8) ![]u8 {
     if (prefix.len == 0) return allocator.dupe(u8, command);
     return std.fmt.allocPrint(allocator, "cd {s} && {s}", .{ prefix, command });
-}
-
-fn directFileNameForPrefix(rel_path: []const u8, prefix: []const u8) ?[]const u8 {
-    if (prefix.len == 0) {
-        if (std.mem.indexOfScalar(u8, rel_path, '/') != null) return null;
-        return rel_path;
-    }
-
-    if (!std.mem.startsWith(u8, rel_path, prefix)) return null;
-    if (rel_path.len <= prefix.len + 1) return null;
-    if (rel_path[prefix.len] != '/') return null;
-
-    const suffix = rel_path[prefix.len + 1 ..];
-    if (std.mem.indexOfScalar(u8, suffix, '/') != null) return null;
-    return suffix;
 }
 
 fn detectMiseTrustInDir(allocator: std.mem.Allocator, cwd: []const u8) !bool {
@@ -683,6 +660,38 @@ fn collectRepoRootAndSubprojectPrefixes(
     return prefixes.toOwnedSlice();
 }
 
+fn listEntryNamesAtPrefix(
+    allocator: std.mem.Allocator,
+    context: *const DetectionContext,
+    prefix: []const u8,
+) ![]([]u8) {
+    var names = std.array_list.Managed([]u8).init(allocator);
+    errdefer freeStringItems(allocator, names.items);
+    defer names.deinit();
+
+    const dir_path = if (prefix.len == 0)
+        try allocator.dupe(u8, context.repo_root)
+    else
+        try std.fs.path.join(allocator, &.{ context.repo_root, prefix });
+    defer allocator.free(dir_path);
+
+    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| switch (err) {
+        error.FileNotFound, error.NotDir => return try allocator.alloc([]u8, 0),
+        else => return err,
+    };
+    defer dir.close();
+
+    var iter = dir.iterate();
+    while (try iter.next()) |entry| {
+        switch (entry.kind) {
+            .file, .sym_link => try names.append(try allocator.dupe(u8, entry.name)),
+            else => {},
+        }
+    }
+
+    return names.toOwnedSlice();
+}
+
 fn discoverForPathRule(
     allocator: std.mem.Allocator,
     context: *const DetectionContext,
@@ -698,7 +707,7 @@ fn discoverForPathRule(
                 .exact => {
                     const rel_path = try joinRelPath(allocator, prefix, pattern.value);
                     defer allocator.free(rel_path);
-                    if (pathExists(context, rel_path)) {
+                    if (pathExists(allocator, context, rel_path)) {
                         matched = true;
                         _ = try addRecommendationIfMissing(allocator, recs, .{
                             .rule_id = rule.id,
@@ -715,8 +724,9 @@ fn discoverForPathRule(
                         continue;
                     }
 
-                    for (context.visible_paths) |visible_path| {
-                        const entry_name = directFileNameForPrefix(visible_path, prefix) orelse continue;
+                    const entry_names = try listEntryNamesAtPrefix(allocator, context, prefix);
+                    defer freeStringSlice(allocator, entry_names);
+                    for (entry_names) |entry_name| {
                         if (!init_rules.matchesPattern(pattern, entry_name)) continue;
                         matched = true;
                         const rel_path = try joinRelPath(allocator, prefix, entry_name);
@@ -742,8 +752,15 @@ fn joinRelPath(allocator: std.mem.Allocator, prefix: []const u8, leaf: []const u
     return std.fs.path.join(allocator, &.{ prefix, leaf });
 }
 
-fn pathExists(context: *const DetectionContext, rel_path: []const u8) bool {
-    return context.visible_path_set.contains(rel_path);
+fn pathExists(allocator: std.mem.Allocator, context: *const DetectionContext, rel_path: []const u8) bool {
+    const abs_path = std.fs.path.join(allocator, &.{ context.repo_root, rel_path }) catch return false;
+    defer allocator.free(abs_path);
+
+    if (std.fs.cwd().access(abs_path, .{})) |_| {
+        return true;
+    } else |_| {
+        return false;
+    }
 }
 
 fn addRecommendationIfMissing(
@@ -1062,6 +1079,49 @@ test "discoverRecommendations respects gitignore when scanning subprojects" {
     try std.testing.expect(!hasRecommendation(recs, .symlink, "apps/api/mise.local.toml"));
     try std.testing.expect(!hasRecommendation(recs, .symlink, "apps/api/.claude/settings.local.json"));
     try std.testing.expect(!hasRecommendation(recs, .run, "cd apps/api && mise trust"));
+}
+
+test "discoverRecommendations detects ignored local files inside discovered subprojects" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try initTmpGitRepo(&tmp);
+    defer std.testing.allocator.free(root);
+
+    try tmp.dir.makePath("apps/api/.claude");
+    try tmp.dir.writeFile(.{ .sub_path = ".gitignore", .data = "**/.claude/settings.local.json\n**/mise.local.toml\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/README.md", .data = "visible\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/mise.local.toml", .data = "ignored local\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/.claude/settings.local.json", .data = "{ }\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/mise.toml", .data = "[tools]\nzig = \"0.15\"\n" });
+
+    const recs = try discoverRecommendationsWithOptions(std.testing.allocator, root, .{
+        .assume_repo_mise_trusted = true,
+    });
+    defer freeRecommendations(std.testing.allocator, recs);
+
+    try std.testing.expect(hasRecommendation(recs, .symlink, "apps/api/mise.local.toml"));
+    try std.testing.expect(hasRecommendation(recs, .symlink, "apps/api/.claude/settings.local.json"));
+    try std.testing.expect(hasRecommendation(recs, .run, "cd apps/api && mise trust"));
+}
+
+test "discoverRecommendations detects ignored root local files" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try initTmpGitRepo(&tmp);
+    defer std.testing.allocator.free(root);
+
+    try tmp.dir.makePath(".claude");
+    try tmp.dir.writeFile(.{ .sub_path = ".gitignore", .data = "**/.claude/settings.local.json\n" });
+    try tmp.dir.writeFile(.{ .sub_path = ".claude/settings.local.json", .data = "{ }\n" });
+
+    const recs = try discoverRecommendationsWithOptions(std.testing.allocator, root, .{
+        .assume_repo_mise_trusted = true,
+    });
+    defer freeRecommendations(std.testing.allocator, recs);
+
+    try std.testing.expect(hasRecommendation(recs, .symlink, ".claude/settings.local.json"));
 }
 
 test "discoverRecommendations can expand depth when requested" {

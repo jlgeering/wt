@@ -7,6 +7,7 @@
 - Scans from the repo root with a bounded subproject discovery pass, then builds one repo-wide proposal for `copy`, `symlink`, and `run` entries regardless of the current working directory.
 - Default subproject scan depth is 2 levels below repo root (configurable internally; no CLI flag yet).
 - Subproject discovery respects `.gitignore`/standard Git excludes and skips hidden subproject roots.
+- Within discovered roots, local setup files can still be detected even when those specific files are ignored (for example `**/.claude/settings.local.json`).
 - Keeps already-matching recommendations automatically on re-runs.
 - Includes anti-pattern cleanup removals in the proposal.
 - Shows anti-pattern warnings only when anti-patterns are actually detected.
