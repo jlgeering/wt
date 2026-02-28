@@ -15,6 +15,91 @@ pub const Recommendation = struct {
 pub const DiscoveryOptions = struct {
     // For tests and deterministic callers. Null means detect from `mise trust --show`.
     assume_repo_mise_trusted: ?bool = null,
+    // Repo-relative invocation directory (empty means repo root).
+    invocation_subdir: []const u8 = "",
+};
+
+const ScopePrefixes = struct {
+    values: [2][]const u8 = .{ "", "" },
+    len: usize = 0,
+
+    fn append(self: *ScopePrefixes, prefix: []const u8) void {
+        if (self.len == self.values.len) return;
+        self.values[self.len] = prefix;
+        self.len += 1;
+    }
+
+    fn slice(self: *const ScopePrefixes) []const []const u8 {
+        return self.values[0..self.len];
+    }
+};
+
+const DetectionContext = struct {
+    repo_root: []const u8,
+    invocation_subdir: []const u8,
+    root_entries: []([]u8),
+    subdir_entries: ?[]([]u8),
+
+    fn init(
+        allocator: std.mem.Allocator,
+        repo_root: []const u8,
+        invocation_subdir: []const u8,
+    ) !DetectionContext {
+        const root_entries = try readEntriesAtRelPath(allocator, repo_root, "");
+        errdefer freeStringSlice(allocator, root_entries);
+
+        var subdir_entries: ?[]([]u8) = null;
+        if (invocation_subdir.len > 0) {
+            subdir_entries = readEntriesAtRelPath(allocator, repo_root, invocation_subdir) catch |err| switch (err) {
+                error.FileNotFound, error.NotDir => try allocator.alloc([]u8, 0),
+                else => return err,
+            };
+        }
+        errdefer if (subdir_entries) |entries| freeStringSlice(allocator, entries);
+
+        return .{
+            .repo_root = repo_root,
+            .invocation_subdir = invocation_subdir,
+            .root_entries = root_entries,
+            .subdir_entries = subdir_entries,
+        };
+    }
+
+    fn deinit(self: *DetectionContext, allocator: std.mem.Allocator) void {
+        freeStringSlice(allocator, self.root_entries);
+        if (self.subdir_entries) |entries| {
+            freeStringSlice(allocator, entries);
+        }
+    }
+
+    fn prefixesForScope(self: *const DetectionContext, scope: init_rules.DetectionScope) ScopePrefixes {
+        var prefixes = ScopePrefixes{};
+        switch (scope) {
+            .repo_root => prefixes.append(""),
+            .invocation_subdir => {
+                if (self.invocation_subdir.len > 0) {
+                    prefixes.append(self.invocation_subdir);
+                } else {
+                    prefixes.append("");
+                }
+            },
+            .repo_root_and_invocation_subdir => {
+                prefixes.append("");
+                if (self.invocation_subdir.len > 0) {
+                    prefixes.append(self.invocation_subdir);
+                }
+            },
+        }
+        return prefixes;
+    }
+
+    fn entriesForPrefix(self: *const DetectionContext, prefix: []const u8) []([]u8) {
+        if (prefix.len == 0) return self.root_entries;
+        if (self.subdir_entries != null and std.mem.eql(u8, prefix, self.invocation_subdir)) {
+            return self.subdir_entries.?;
+        }
+        return &.{};
+    }
 };
 
 pub const AntiPattern = struct {
@@ -184,30 +269,27 @@ pub fn discoverRecommendationsWithOptions(
     }
     defer recs.deinit();
 
-    const root_entries = try readRootEntries(allocator, repo_root);
-    defer freeStringSlice(allocator, root_entries);
+    const invocation_subdir = normalizeInvocationSubdir(options.invocation_subdir);
+    var context = try DetectionContext.init(allocator, repo_root, invocation_subdir);
+    defer context.deinit(allocator);
 
     var triggered_rule_ids = std.StringHashMap(void).init(allocator);
     defer triggered_rule_ids.deinit();
 
     for (init_rules.path_rules) |rule| {
-        const matched = try discoverForPathRule(allocator, repo_root, root_entries, rule, &recs);
+        const matched = try discoverForPathRule(allocator, &context, rule, &recs);
         if (matched) {
             try triggered_rule_ids.put(rule.id, {});
         }
     }
 
-    var repo_mise_trusted = options.assume_repo_mise_trusted;
     for (init_rules.command_rules) |rule| {
         const triggered_by_rules = isCommandRuleTriggeredByRules(&triggered_rule_ids, rule);
-        const triggered_by_patterns = isCommandRuleTriggeredByPatterns(root_entries, rule);
+        const triggered_by_patterns = try isCommandRuleTriggeredByPatterns(allocator, &context, rule);
         if (!triggered_by_rules and !triggered_by_patterns) continue;
 
         if (rule.requires_repo_mise_trust) {
-            if (repo_mise_trusted == null) {
-                repo_mise_trusted = detectRepoMiseTrust(allocator, repo_root) catch false;
-            }
-            if (!(repo_mise_trusted orelse false)) continue;
+            if (!try isMiseTrustedForScope(allocator, &context, rule.detection_scope, options.assume_repo_mise_trusted)) continue;
         }
 
         _ = try addRecommendationIfMissing(allocator, &recs, .{
@@ -222,6 +304,11 @@ pub fn discoverRecommendationsWithOptions(
     return recs.toOwnedSlice();
 }
 
+fn normalizeInvocationSubdir(raw_subdir: []const u8) []const u8 {
+    const whitespace_trimmed = std.mem.trim(u8, raw_subdir, " \t\r\n");
+    return std.mem.trim(u8, whitespace_trimmed, "/\\");
+}
+
 fn isCommandRuleTriggeredByRules(
     triggered_rule_ids: *const std.StringHashMap(void),
     rule: init_rules.CommandRule,
@@ -232,24 +319,64 @@ fn isCommandRuleTriggeredByRules(
     return false;
 }
 
-fn isCommandRuleTriggeredByPatterns(root_entries: []([]u8), rule: init_rules.CommandRule) bool {
-    for (rule.trigger_patterns) |pattern| {
-        if (std.mem.indexOfScalar(u8, pattern.value, '/')) |_| {
-            continue;
-        }
-
-        for (root_entries) |entry_name| {
-            if (init_rules.matchesPattern(pattern, entry_name)) return true;
+fn isCommandRuleTriggeredByPatterns(
+    allocator: std.mem.Allocator,
+    context: *const DetectionContext,
+    rule: init_rules.CommandRule,
+) !bool {
+    const prefixes = context.prefixesForScope(rule.detection_scope);
+    for (prefixes.slice()) |prefix| {
+        for (rule.trigger_patterns) |pattern| {
+            switch (pattern.kind) {
+                .exact => {
+                    const rel_path = try joinRelPath(allocator, prefix, pattern.value);
+                    defer allocator.free(rel_path);
+                    if (pathExists(allocator, context.repo_root, rel_path)) return true;
+                },
+                .prefix, .glob => {
+                    if (std.mem.indexOfScalar(u8, pattern.value, '/')) |_| {
+                        // Prefix/glob matching is intentionally limited to one directory level.
+                        continue;
+                    }
+                    const entries = context.entriesForPrefix(prefix);
+                    for (entries) |entry_name| {
+                        if (init_rules.matchesPattern(pattern, entry_name)) return true;
+                    }
+                },
+            }
         }
     }
     return false;
 }
 
-fn detectRepoMiseTrust(allocator: std.mem.Allocator, repo_root: []const u8) !bool {
+fn isMiseTrustedForScope(
+    allocator: std.mem.Allocator,
+    context: *const DetectionContext,
+    scope: init_rules.DetectionScope,
+    assume_repo_mise_trusted: ?bool,
+) !bool {
+    if (assume_repo_mise_trusted) |trusted| return trusted;
+
+    const prefixes = context.prefixesForScope(scope);
+    for (prefixes.slice()) |prefix| {
+        const cwd = try resolveScopeCwd(allocator, context.repo_root, prefix);
+        defer allocator.free(cwd);
+        if (detectMiseTrustInDir(allocator, cwd) catch false) return true;
+    }
+
+    return false;
+}
+
+fn resolveScopeCwd(allocator: std.mem.Allocator, repo_root: []const u8, prefix: []const u8) ![]u8 {
+    if (prefix.len == 0) return allocator.dupe(u8, repo_root);
+    return std.fs.path.join(allocator, &.{ repo_root, prefix });
+}
+
+fn detectMiseTrustInDir(allocator: std.mem.Allocator, cwd: []const u8) !bool {
     const result = std.process.Child.run(.{
         .allocator = allocator,
         .argv = &.{ "mise", "trust", "--show" },
-        .cwd = repo_root,
+        .cwd = cwd,
     }) catch {
         return error.MiseNotFound;
     };
@@ -398,12 +525,22 @@ fn freeList(allocator: std.mem.Allocator, list: *std.array_list.Managed([]u8)) v
     list.deinit();
 }
 
-fn readRootEntries(allocator: std.mem.Allocator, repo_root: []const u8) ![]([]u8) {
+fn readEntriesAtRelPath(
+    allocator: std.mem.Allocator,
+    repo_root: []const u8,
+    rel_path: []const u8,
+) ![]([]u8) {
     var entries = std.array_list.Managed([]u8).init(allocator);
     errdefer freeStringItems(allocator, entries.items);
     defer entries.deinit();
 
-    var dir = try std.fs.cwd().openDir(repo_root, .{ .iterate = true });
+    const dir_path = if (rel_path.len == 0)
+        try allocator.dupe(u8, repo_root)
+    else
+        try std.fs.path.join(allocator, &.{ repo_root, rel_path });
+    defer allocator.free(dir_path);
+
+    var dir = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
     defer dir.close();
 
     var iterator = dir.iterate();
@@ -419,49 +556,61 @@ fn readRootEntries(allocator: std.mem.Allocator, repo_root: []const u8) ![]([]u8
 
 fn discoverForPathRule(
     allocator: std.mem.Allocator,
-    repo_root: []const u8,
-    root_entries: []([]u8),
+    context: *const DetectionContext,
     rule: init_rules.PathRule,
     recs: *std.array_list.Managed(Recommendation),
 ) !bool {
     var matched = false;
+    const prefixes = context.prefixesForScope(rule.detection_scope);
 
-    for (rule.patterns) |pattern| {
-        switch (pattern.kind) {
-            .exact => {
-                if (pathExists(allocator, repo_root, pattern.value)) {
-                    matched = true;
-                    _ = try addRecommendationIfMissing(allocator, recs, .{
-                        .rule_id = rule.id,
-                        .section = rule.section,
-                        .value = pattern.value,
-                        .prompt = rule.prompt,
-                        .reason = rule.reason,
-                    });
-                }
-            },
-            .prefix, .glob => {
-                if (std.mem.indexOfScalar(u8, pattern.value, '/')) |_| {
-                    // Prefix/glob matching is intentionally limited to repo-root file names.
-                    continue;
-                }
+    for (prefixes.slice()) |prefix| {
+        for (rule.patterns) |pattern| {
+            switch (pattern.kind) {
+                .exact => {
+                    const rel_path = try joinRelPath(allocator, prefix, pattern.value);
+                    defer allocator.free(rel_path);
+                    if (pathExists(allocator, context.repo_root, rel_path)) {
+                        matched = true;
+                        _ = try addRecommendationIfMissing(allocator, recs, .{
+                            .rule_id = rule.id,
+                            .section = rule.section,
+                            .value = rel_path,
+                            .prompt = rule.prompt,
+                            .reason = rule.reason,
+                        });
+                    }
+                },
+                .prefix, .glob => {
+                    if (std.mem.indexOfScalar(u8, pattern.value, '/')) |_| {
+                        // Prefix/glob matching is intentionally limited to one directory level.
+                        continue;
+                    }
 
-                for (root_entries) |entry_name| {
-                    if (!init_rules.matchesPattern(pattern, entry_name)) continue;
-                    matched = true;
-                    _ = try addRecommendationIfMissing(allocator, recs, .{
-                        .rule_id = rule.id,
-                        .section = rule.section,
-                        .value = entry_name,
-                        .prompt = rule.prompt,
-                        .reason = rule.reason,
-                    });
-                }
-            },
+                    const entries = context.entriesForPrefix(prefix);
+                    for (entries) |entry_name| {
+                        if (!init_rules.matchesPattern(pattern, entry_name)) continue;
+                        matched = true;
+                        const rel_path = try joinRelPath(allocator, prefix, entry_name);
+                        defer allocator.free(rel_path);
+                        _ = try addRecommendationIfMissing(allocator, recs, .{
+                            .rule_id = rule.id,
+                            .section = rule.section,
+                            .value = rel_path,
+                            .prompt = rule.prompt,
+                            .reason = rule.reason,
+                        });
+                    }
+                },
+            }
         }
     }
 
     return matched;
+}
+
+fn joinRelPath(allocator: std.mem.Allocator, prefix: []const u8, leaf: []const u8) ![]u8 {
+    if (prefix.len == 0) return allocator.dupe(u8, leaf);
+    return std.fs.path.join(allocator, &.{ prefix, leaf });
 }
 
 fn pathExists(allocator: std.mem.Allocator, root: []const u8, rel_path: []const u8) bool {
@@ -666,6 +815,70 @@ test "discoverRecommendations finds file and command suggestions" {
     try std.testing.expect(saw_copy_mise);
     try std.testing.expect(saw_copy_claude);
     try std.testing.expect(saw_mise_trust);
+}
+
+test "discoverRecommendations includes invocation subdir matches across setup types" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.makePath("apps/api/.claude");
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/mise.local.toml", .data = "trust = true\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/.claude/settings.local.json", .data = "{ }\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/.envrc", .data = "use flake\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/mise.toml", .data = "[tools]\nzig = \"0.15\"\n" });
+
+    const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+
+    const recs = try discoverRecommendationsWithOptions(std.testing.allocator, root, .{
+        .assume_repo_mise_trusted = true,
+        .invocation_subdir = "apps/api/",
+    });
+    defer freeRecommendations(std.testing.allocator, recs);
+
+    var saw_subdir_copy_mise = false;
+    var saw_subdir_copy_claude = false;
+    var saw_subdir_symlink_envrc = false;
+    var saw_mise_trust = false;
+    var saw_direnv_allow = false;
+
+    for (recs) |rec| {
+        if (rec.section == .copy and std.mem.eql(u8, rec.value, "apps/api/mise.local.toml")) saw_subdir_copy_mise = true;
+        if (rec.section == .copy and std.mem.eql(u8, rec.value, "apps/api/.claude/settings.local.json")) saw_subdir_copy_claude = true;
+        if (rec.section == .symlink and std.mem.eql(u8, rec.value, "apps/api/.envrc")) saw_subdir_symlink_envrc = true;
+        if (rec.section == .run and std.mem.eql(u8, rec.value, "mise trust")) saw_mise_trust = true;
+        if (rec.section == .run and std.mem.eql(u8, rec.value, "direnv allow")) saw_direnv_allow = true;
+    }
+
+    try std.testing.expect(saw_subdir_copy_mise);
+    try std.testing.expect(saw_subdir_copy_claude);
+    try std.testing.expect(saw_subdir_symlink_envrc);
+    try std.testing.expect(saw_mise_trust);
+    try std.testing.expect(saw_direnv_allow);
+}
+
+test "discoverRecommendations ignores nested matches without invocation subdir context" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    try tmp.dir.makePath("apps/api/.claude");
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/mise.local.toml", .data = "trust = true\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/.claude/settings.local.json", .data = "{ }\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "apps/api/.envrc", .data = "use flake\n" });
+
+    const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+
+    const recs = try discoverRecommendationsWithOptions(std.testing.allocator, root, .{
+        .assume_repo_mise_trusted = true,
+    });
+    defer freeRecommendations(std.testing.allocator, recs);
+
+    for (recs) |rec| {
+        try std.testing.expect(!std.mem.eql(u8, rec.value, "apps/api/mise.local.toml"));
+        try std.testing.expect(!std.mem.eql(u8, rec.value, "apps/api/.claude/settings.local.json"));
+        try std.testing.expect(!std.mem.eql(u8, rec.value, "apps/api/.envrc"));
+    }
 }
 
 test "discoverRecommendations omits mise trust when repo is not trusted" {
