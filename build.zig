@@ -64,6 +64,8 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     // Unit tests
+    const installed_wt_path = b.getInstallPath(.bin, "wt");
+
     const lib_test_module = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -75,6 +77,7 @@ pub fn build(b: *std.Build) void {
     });
     const run_lib_tests = b.addRunArtifact(lib_tests);
     const test_step = b.step("test", "Run unit and integration tests");
+    test_step.dependOn(b.getInstallStep());
     test_step.dependOn(&run_lib_tests.step);
 
     // Smoke-test help rendering paths so regressions fail `zig build test`.
@@ -130,6 +133,8 @@ pub fn build(b: *std.Build) void {
         .root_module = integration_shell_init_test_module,
     });
     const run_integration_shell_init_tests = b.addRunArtifact(integration_shell_init_tests);
+    run_integration_shell_init_tests.step.dependOn(b.getInstallStep());
+    run_integration_shell_init_tests.setEnvironmentVariable("WT_TEST_WT_BIN", installed_wt_path);
     test_step.dependOn(&run_integration_shell_init_tests.step);
 
     const integration_step = b.step("test-integration", "Run integration tests");

@@ -3,6 +3,11 @@ const std = @import("std");
 const helpers = @import("helpers.zig");
 const shell_init = @import("wt_root").cmd_shell_init;
 
+const ScriptFlavor = enum {
+    bsd,
+    util_linux,
+};
+
 const ShellRuntime = struct {
     name: []const u8,
     bin: []const u8,
@@ -42,10 +47,10 @@ fn requireScript(shell: []const u8) ![]const u8 {
     return shell_init.scriptForShell(shell) orelse return error.MissingShellScript;
 }
 
-fn shellExists(allocator: std.mem.Allocator, shell_bin: []const u8) bool {
+fn commandSucceeds(allocator: std.mem.Allocator, argv: []const []const u8) bool {
     const result = std.process.Child.run(.{
         .allocator = allocator,
-        .argv = &.{ shell_bin, "-c", "exit 0" },
+        .argv = argv,
     }) catch |err| switch (err) {
         error.FileNotFound => return false,
         else => return false,
@@ -56,6 +61,132 @@ fn shellExists(allocator: std.mem.Allocator, shell_bin: []const u8) bool {
     return switch (result.term) {
         .Exited => |code| code == 0,
         else => false,
+    };
+}
+
+fn shellExists(allocator: std.mem.Allocator, shell_bin: []const u8) bool {
+    return commandSucceeds(allocator, &.{ shell_bin, "-c", "exit 0" });
+}
+
+fn detectScriptFlavor(allocator: std.mem.Allocator) ?ScriptFlavor {
+    if (commandSucceeds(allocator, &.{ "script", "-q", "/dev/null", "true" })) return .bsd;
+    if (commandSucceeds(allocator, &.{ "script", "-q", "-c", "true", "/dev/null" })) return .util_linux;
+    return null;
+}
+
+fn resolveWtBinaryPath(allocator: std.mem.Allocator) !?[]u8 {
+    const path = std.process.getEnvVarOwned(allocator, "WT_TEST_WT_BIN") catch |err| switch (err) {
+        error.EnvironmentVariableNotFound => return null,
+        else => return err,
+    };
+    errdefer allocator.free(path);
+
+    std.fs.cwd().access(path, .{}) catch {
+        allocator.free(path);
+        return null;
+    };
+
+    return path;
+}
+
+fn writeExecutableFile(allocator: std.mem.Allocator, path: []const u8, content: []const u8) !void {
+    try helpers.writeFile(path, content);
+    const chmod_stdout = try helpers.runChecked(allocator, null, &.{ "chmod", "+x", path });
+    allocator.free(chmod_stdout);
+}
+
+fn preparePtyShimBin(
+    allocator: std.mem.Allocator,
+    shim_bin_dir: []const u8,
+    wt_bin_path: []const u8,
+) !void {
+    const shim_wt_path = try std.fs.path.join(allocator, &.{ shim_bin_dir, "wt" });
+    defer allocator.free(shim_wt_path);
+    const wt_wrapper = try std.fmt.allocPrint(
+        allocator,
+        "#!/bin/sh\nexec \"{s}\" \"$@\"\n",
+        .{wt_bin_path},
+    );
+    defer allocator.free(wt_wrapper);
+    try writeExecutableFile(allocator, shim_wt_path, wt_wrapper);
+
+    const shim_fzf_path = try std.fs.path.join(allocator, &.{ shim_bin_dir, "fzf" });
+    defer allocator.free(shim_fzf_path);
+    try writeExecutableFile(allocator, shim_fzf_path, "#!/bin/sh\nexit 1\n");
+}
+
+fn runPtyShellNoArgScenario(
+    allocator: std.mem.Allocator,
+    shell: ShellRuntime,
+    init_script_path: []const u8,
+    cwd: []const u8,
+    shim_bin_dir: []const u8,
+    script_flavor: ScriptFlavor,
+    stdin_input: []const u8,
+) !std.process.Child.RunResult {
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+
+    const existing_path = env_map.get("PATH") orelse "";
+    const full_path = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ shim_bin_dir, existing_path });
+    defer allocator.free(full_path);
+    try env_map.put("PATH", full_path);
+
+    const shell_program = try buildShellProgram(allocator, shell, init_script_path, "");
+    defer allocator.free(shell_program);
+
+    const scenario_name = try std.fmt.allocPrint(allocator, "{s}.pty.scenario", .{shell.name});
+    defer allocator.free(scenario_name);
+    const scenario_path = try std.fs.path.join(allocator, &.{ shim_bin_dir, scenario_name });
+    defer allocator.free(scenario_path);
+    try helpers.writeFile(scenario_path, shell_program);
+
+    var child = blk: {
+        switch (script_flavor) {
+            .bsd => {
+                const c = std.process.Child.init(
+                    &.{ "script", "-q", "/dev/null", shell.bin, scenario_path },
+                    allocator,
+                );
+                break :blk c;
+            },
+            .util_linux => {
+                const script_command = try std.fmt.allocPrint(allocator, "{s} {s}", .{ shell.bin, scenario_path });
+                defer allocator.free(script_command);
+                const c = std.process.Child.init(
+                    &.{ "script", "-q", "-c", script_command, "/dev/null" },
+                    allocator,
+                );
+                break :blk c;
+            },
+        }
+    };
+
+    child.stdin_behavior = .Pipe;
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
+    child.cwd = cwd;
+    child.env_map = &env_map;
+
+    try child.spawn();
+    {
+        try child.stdin.?.deprecatedWriter().writeAll(stdin_input);
+        child.stdin.?.close();
+        child.stdin = null;
+    }
+
+    var stdout_buf = std.ArrayListUnmanaged(u8){};
+    errdefer stdout_buf.deinit(allocator);
+    var stderr_buf = std.ArrayListUnmanaged(u8){};
+    errdefer stderr_buf.deinit(allocator);
+
+    try child.collectOutput(allocator, &stdout_buf, &stderr_buf, 1024 * 1024);
+    const term = try child.wait();
+
+    return .{
+        .term = term,
+        .stdout = try stdout_buf.toOwnedSlice(allocator),
+        .stderr = try stderr_buf.toOwnedSlice(allocator),
     };
 }
 
@@ -365,5 +496,100 @@ test "integration: zsh/bash/nu wrapper runtime parity for picker and new/add flo
 
     if (!ran_any_shell) {
         std.debug.print("SKIP runtime parity checks: zsh/bash/nu not installed\n", .{});
+    }
+}
+
+test "integration: PTY no-arg shell-init picker cancel works for zsh/bash/nu" {
+    const allocator = std.testing.allocator;
+    const rel_subdir = "sub/inner";
+    const cancel_input = "q\n";
+    const test_branch = "feat-pty-picker";
+
+    const wt_bin_path = (try resolveWtBinaryPath(allocator)) orelse {
+        std.debug.print("SKIP PTY picker test: WT_TEST_WT_BIN is missing or unresolved\n", .{});
+        return;
+    };
+    defer allocator.free(wt_bin_path);
+
+    const script_flavor = detectScriptFlavor(allocator) orelse {
+        std.debug.print("SKIP PTY picker test: `script` command not available\n", .{});
+        return;
+    };
+
+    const temp_root = try helpers.createTempDir(allocator);
+    defer {
+        helpers.cleanupPath(allocator, temp_root);
+        allocator.free(temp_root);
+    }
+
+    const shim_bin_dir = try std.fs.path.join(allocator, &.{ temp_root, "bin" });
+    defer allocator.free(shim_bin_dir);
+    try std.fs.cwd().makePath(shim_bin_dir);
+    try preparePtyShimBin(allocator, shim_bin_dir, wt_bin_path);
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const repo_subdir = try std.fs.path.join(allocator, &.{ repo_path, rel_subdir });
+    defer allocator.free(repo_subdir);
+    try std.fs.cwd().makePath(repo_subdir);
+
+    const secondary_path = try std.fs.path.join(allocator, &.{ temp_root, "repo--feat-pty-picker" });
+    defer allocator.free(secondary_path);
+    {
+        const add_worktree_output = try helpers.runChecked(
+            allocator,
+            repo_path,
+            &.{ "git", "worktree", "add", "-b", test_branch, secondary_path },
+        );
+        allocator.free(add_worktree_output);
+    }
+
+    var ran_any_shell = false;
+
+    for (runtime_shells) |shell| {
+        if (!shellExists(allocator, shell.bin)) {
+            std.debug.print("SKIP {s} PTY picker test: shell not installed\n", .{shell.name});
+            continue;
+        }
+
+        ran_any_shell = true;
+
+        const init_script = try requireScript(shell.name);
+        const init_script_name = try std.fmt.allocPrint(allocator, "{s}.pty.init", .{shell.name});
+        defer allocator.free(init_script_name);
+        const init_script_path = try std.fs.path.join(allocator, &.{ temp_root, init_script_name });
+        defer allocator.free(init_script_path);
+        try helpers.writeFile(init_script_path, init_script);
+
+        const result = try runPtyShellNoArgScenario(
+            allocator,
+            shell,
+            init_script_path,
+            repo_subdir,
+            shim_bin_dir,
+            script_flavor,
+            cancel_input,
+        );
+        defer allocator.free(result.stdout);
+        defer allocator.free(result.stderr);
+        try expectExitCode(result, 0);
+
+        const combined_output = try std.fmt.allocPrint(allocator, "{s}\n{s}", .{ result.stdout, result.stderr });
+        defer allocator.free(combined_output);
+        const unchanged_pwd_marker = try std.fmt.allocPrint(allocator, "PWD={s}", .{repo_subdir});
+        defer allocator.free(unchanged_pwd_marker);
+
+        try std.testing.expect(std.mem.indexOf(u8, combined_output, "Choose a worktree:") != null);
+        try std.testing.expect(std.mem.indexOf(u8, combined_output, "Select worktree [1-") != null);
+        try std.testing.expect(std.mem.indexOf(u8, combined_output, test_branch) != null);
+        try std.testing.expect(std.mem.indexOf(u8, combined_output, unchanged_pwd_marker) != null);
+    }
+
+    if (!ran_any_shell) {
+        std.debug.print("SKIP PTY picker test: zsh/bash/nu not installed\n", .{});
     }
 }
