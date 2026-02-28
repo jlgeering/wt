@@ -8,6 +8,11 @@ pub const LogMode = enum {
     quiet,
 };
 
+const SetupShell = struct {
+    program: []const u8,
+    command_flag: []const u8,
+};
+
 const PathValidationIssue = enum {
     empty,
     absolute,
@@ -56,6 +61,13 @@ fn pathIssueLabel(issue: PathValidationIssue) []const u8 {
         .empty => "empty path",
         .absolute => "absolute path",
         .traversal => "parent traversal",
+    };
+}
+
+fn setupShellForOs(os_tag: std.Target.Os.Tag) SetupShell {
+    return switch (os_tag) {
+        .windows => .{ .program = "cmd.exe", .command_flag = "/C" },
+        else => .{ .program = "sh", .command_flag = "-c" },
     };
 }
 
@@ -247,6 +259,8 @@ pub fn runSetupCommands(
     commands: []const []const u8,
     mode: LogMode,
 ) !void {
+    const shell = setupShellForOs(builtin.os.tag);
+
     for (commands) |cmd| {
         if (mode == .human) {
             logMessage(.info, "running: {s}", .{cmd});
@@ -254,7 +268,7 @@ pub fn runSetupCommands(
 
         const result = std.process.Child.run(.{
             .allocator = allocator,
-            .argv = &.{ "sh", "-c", cmd },
+            .argv = &.{ shell.program, shell.command_flag, cmd },
             .cwd = cwd,
         }) catch {
             logMessage(.warn, "failed to run '{s}'", .{cmd});
@@ -377,4 +391,37 @@ test "copyPathPortable copies directory tree" {
     const gamma_data = try std.fs.cwd().readFileAlloc(std.testing.allocator, gamma, 1024);
     defer std.testing.allocator.free(gamma_data);
     try std.testing.expectEqualStrings("gamma\n", gamma_data);
+}
+
+test "setupShellForOs picks shell command for each platform" {
+    const windows_shell = setupShellForOs(.windows);
+    try std.testing.expectEqualStrings("cmd.exe", windows_shell.program);
+    try std.testing.expectEqualStrings("/C", windows_shell.command_flag);
+
+    const linux_shell = setupShellForOs(.linux);
+    try std.testing.expectEqualStrings("sh", linux_shell.program);
+    try std.testing.expectEqualStrings("-c", linux_shell.command_flag);
+}
+
+test "runSetupCommands continues after command failure" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const cwd = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(cwd);
+
+    const commands: []const []const u8 = switch (builtin.os.tag) {
+        .windows => &.{ "exit /b 1", "echo after-failure>marker.txt" },
+        else => &.{ "false", "printf after-failure > marker.txt" },
+    };
+
+    try runSetupCommands(std.testing.allocator, cwd, commands, .quiet);
+
+    const marker_path = try std.fs.path.join(std.testing.allocator, &.{ cwd, "marker.txt" });
+    defer std.testing.allocator.free(marker_path);
+
+    const marker_content = try std.fs.cwd().readFileAlloc(std.testing.allocator, marker_path, 1024);
+    defer std.testing.allocator.free(marker_content);
+    const marker_trimmed = std.mem.trim(u8, marker_content, " \t\r\n");
+    try std.testing.expectEqualStrings("after-failure", marker_trimmed);
 }

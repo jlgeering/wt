@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const wt_lib = @import("wt_lib");
 const git = wt_lib.git;
@@ -45,9 +46,11 @@ test "integration: setup actions run against a real worktree" {
     defer allocator.free(link_source);
     try helpers.writeFile(link_source, "link payload\n");
 
-    const config_path = try std.fs.path.join(allocator, &.{ repo_path, ".wt.toml" });
-    defer allocator.free(config_path);
-    try helpers.writeFile(config_path,
+    const run_cmd = switch (builtin.os.tag) {
+        .windows => "echo setup-ran>setup.log",
+        else => "printf setup-ran > setup.log",
+    };
+    const config_body = try std.fmt.allocPrint(allocator,
         \\[copy]
         \\paths = ["copy-me.txt"]
         \\
@@ -55,9 +58,14 @@ test "integration: setup actions run against a real worktree" {
         \\paths = ["link-me.txt"]
         \\
         \\[run]
-        \\commands = ["printf setup-ran > setup.log"]
+        \\commands = ["{s}"]
         \\
-    );
+    , .{run_cmd});
+    defer allocator.free(config_body);
+
+    const config_path = try std.fs.path.join(allocator, &.{ repo_path, ".wt.toml" });
+    defer allocator.free(config_path);
+    try helpers.writeFile(config_path, config_body);
 
     const add_output = try git.runGit(
         allocator,
@@ -90,7 +98,8 @@ test "integration: setup actions run against a real worktree" {
     defer allocator.free(setup_log_path);
     const setup_log = try helpers.readFileAlloc(allocator, setup_log_path);
     defer allocator.free(setup_log);
-    try std.testing.expectEqualStrings("setup-ran", setup_log);
+    const setup_log_trimmed = std.mem.trim(u8, setup_log, " \t\r\n");
+    try std.testing.expectEqualStrings("setup-ran", setup_log_trimmed);
 }
 
 test "integration: remove a clean worktree and delete branch" {
