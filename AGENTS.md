@@ -1,94 +1,72 @@
 # AGENTS.md
 
-## Issue Tracking
+## What This Repo Is
 
-Use `br` for tracking work.
+`wt` is an experimental Zig CLI for managing Git worktrees. It helps users create, list, remove, and initialize worktrees with consistent naming and optional setup automation.
 
-Terminology:
-- `bead`, `task`, and `issue` mean the same thing in this repo.
-- You may also see `ticket` or `work item` used with the same meaning.
+Treat `AGENTS.md` as bootstrap and policy, not as the canonical source for CLI details. Command flags, output contracts, and evolving behavior belong in the CLI help and specs.
 
-Always run direct `br` commands through mise so agents use the mise-managed toolchain instead of global/system binaries:
+## Start Here
 
-- `mise x -- br ready`
-- `mise x -- br list --status=open`
-- `mise x -- br show <id>`
-- `mise x -- br create --title="..." --description="..." --type=task --priority=2`
-- `mise x -- br update <id> --claim`
-- `mise x -- br close <id> --reason="Completed"`
-- `mise x -- br sync --flush-only`
+When entering this repo cold, read these first:
 
-## Workflow Conventions
+1. [`README.md`](README.md) for quick usage, contributor workflow, and local development commands.
+2. [`docs/specs/command-reference.md`](docs/specs/command-reference.md) for normative command behavior and output contracts.
+3. [`docs/specs/init-and-config.md`](docs/specs/init-and-config.md) for `wt init` and config semantics.
+4. [`docs/README.md`](docs/README.md) for the documentation map.
+5. [`mise.toml`](mise.toml) for the source of truth on local tasks and tool versions.
 
-Use this default delivery loop unless the user asks otherwise:
+For live command discovery, prefer `mise x -- wt --help` or `wt <command> --help` instead of copying command details into policy docs.
 
-1. Pick the next ready bead (`mise x -- br ready`).
-2. Claim it (`mise x -- br update <id> --claim`).
+## Repo Map
+
+- `src/commands/`: CLI command entrypoints
+- `src/lib/`: shared worktree, git, config, formatting, shell-init, and UI logic
+- `src/tools/`: internal maintainer tooling
+- `test/`: integration tests, fixtures, and helpers
+- `docs/specs/`: normative behavior and contract docs
+- `docs/guides/`: contributor and maintainer runbooks
+- `docs/adr/`: architecture and policy decisions
+- `plans/`: active planning artifacts
+- `archive/`: completed or superseded plans and explorations
+
+## Working Norms
+
+- Use `mise` for toolchain and task execution.
+- Prefer `mise run build`, `mise run test`, `mise run lint`, or `mise run check` for validation.
+- Prefer `mise x -- <tool> ...` for direct tool use when the repo manages that tool with `mise`.
+- Follow existing Zig patterns before introducing new structure.
+- Propose an ADR in `docs/adr` for meaningful user-facing default changes, policy decisions, or cross-platform tradeoffs.
+
+## Docs Contract
+
+Keep this file short and stable.
+
+- `AGENTS.md`: bootstrap, repo-specific policy, and durable working conventions
+- CLI help: current command surface and flags
+- `docs/specs/`: normative behavior and output semantics
+- `docs/guides/`: operational workflows and maintenance instructions
+
+If a detail is likely to drift as the CLI evolves, do not duplicate it here.
+
+## Work Tracking
+
+Tracked work in this repo uses `br`. Run `br` through `mise x -- br ...`, not a global binary.
+
+Default loop for tracked work:
+
+1. Pick the next ready bead.
+2. Claim it.
 3. Implement and validate changes.
-4. Update the bead status/details as needed.
-5. Close it when done (`mise x -- br close <id> --reason="Completed"`).
-6. Sync tracker state (`mise x -- br sync --flush-only`).
-7. Commit immediately for that bead (one commit per finished bead).
-8. Repeat with the next ready bead.
+4. Update the bead status or notes as needed.
+5. Close it when done.
+6. Sync tracker state.
+7. Commit immediately for that bead.
 
-When a completed bead uncovers new scoped work, create follow-up beads before moving on.
+Keep one active bead at a time. If you pause mid-bead, leave resume-ready notes with what is done, what remains, files touched, validation status, the exact next step, and the current branch and commit.
 
-For long sessions, keep progress resumable:
+Session shorthands:
 
-- Keep one active bead at a time.
-- After each completed bead: close, sync, commit, then move to next.
-- If pausing mid-bead, checkpoint progress in the bead notes with:
-  - what is done
-  - what remains
-  - exact next command/step
-  - validation status
-  - files touched
-  - current branch and latest commit SHA
-
-When starting a new session:
-
-1. Check in-progress beads (`mise x -- br list --status=in_progress`).
-2. Open the active bead (`mise x -- br show <id>`).
-3. Resume from checkpoint notes before doing new work.
-
-### Shorthand: "wrap it up"
-
-If the user says "wrap it up", interpret it as:
-
-1. Update the current bead (status/notes).
-2. Create any necessary follow-up beads.
-3. Export/flush tracker updates (`mise x -- br sync --flush-only`).
-4. Commit the completed work.
-5. If working on a non-`main` branch, rebase on `main` when appropriate and safe.
-
-### Shorthand: "checkpoint"
-
-If the user says "checkpoint", interpret it as:
-
-1. Update current bead notes with a resume-ready handoff.
-2. Sync/export tracker updates.
-3. Report the exact next step for the next session.
-
-### Shorthand: "resume"
-
-If the user says "resume", interpret it as:
-
-1. Find the active in-progress bead.
-2. Read checkpoint notes and last commit context.
-3. Continue from the documented next step.
-
-## Tooling Policy
-
-We use mise for tool versions, task execution, and environment setup.
-
-- Use `mise run <task>` for repo tasks.
-- Use `mise x -- <tool> ...` for direct tool invocations.
-- Do not rely on globally installed tools when a mise-managed equivalent exists.
-
-## ADRs
-
-Propose a new ADR in `docs/adr` for meaningful user-facing behavior/default changes, cross-platform tradeoffs, or policy decisions.
-
-## Release Process
-
-Canonical release process: `docs/guides/release-process.md`.
+- `resume`: find the active in-progress bead, read its notes, and continue from the documented next step.
+- `checkpoint`: update the current bead with a resume-ready handoff, sync tracker state, and report the next step.
+- `wrap it up`: update the current bead, create follow-up beads if needed, sync tracker state, commit finished work, and rebase on `main` when appropriate and safe.
