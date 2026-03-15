@@ -7,7 +7,6 @@ paths = []
 [symlink]
 paths = [
   ".claude/settings.local.json",
-  "mise.local.toml",
 ]
 
 [run]
