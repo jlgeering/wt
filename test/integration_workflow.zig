@@ -24,6 +24,107 @@ fn expectBranchMissing(repo_path: []const u8, branch: []const u8) !void {
     }
 }
 
+fn expectUpstream(repo_path: []const u8, branch: []const u8, expected_upstream: []const u8) !void {
+    const allocator = std.testing.allocator;
+    const upstream_ref = try std.fmt.allocPrint(allocator, "{s}@{{upstream}}", .{branch});
+    defer allocator.free(upstream_ref);
+
+    const out = try git.runGit(
+        allocator,
+        repo_path,
+        &.{ "rev-parse", "--abbrev-ref", "--symbolic-full-name", upstream_ref },
+    );
+    defer allocator.free(out);
+
+    try std.testing.expectEqualStrings(expected_upstream, std.mem.trim(u8, out, " \t\r\n"));
+}
+
+const CliResult = struct {
+    stdout: []u8,
+    stderr: []u8,
+    exit_code: u8,
+
+    fn deinit(self: CliResult, allocator: std.mem.Allocator) void {
+        allocator.free(self.stdout);
+        allocator.free(self.stderr);
+    }
+};
+
+fn runWt(allocator: std.mem.Allocator, wt_bin: []const u8, cwd: []const u8, argv: []const []const u8) !CliResult {
+    var full_argv = std.array_list.Managed([]const u8).init(allocator);
+    defer full_argv.deinit();
+
+    try full_argv.append(wt_bin);
+    try full_argv.appendSlice(argv);
+
+    const result = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = full_argv.items,
+        .cwd = cwd,
+    });
+
+    const exit_code = switch (result.term) {
+        .Exited => |code| code,
+        else => return error.UnexpectedTermination,
+    };
+
+    return .{
+        .stdout = result.stdout,
+        .stderr = result.stderr,
+        .exit_code = exit_code,
+    };
+}
+
+fn createBareRemoteRepo(allocator: std.mem.Allocator) ![]u8 {
+    const remote_path = try helpers.createTempDir(allocator);
+    errdefer {
+        helpers.cleanupPath(allocator, remote_path);
+        allocator.free(remote_path);
+    }
+
+    const init_remote_output = try helpers.runChecked(allocator, null, &.{ "git", "init", "--bare", remote_path });
+    allocator.free(init_remote_output);
+    return remote_path;
+}
+
+fn addRemote(repo_path: []const u8, remote_name: []const u8, remote_path: []const u8) !void {
+    const allocator = std.testing.allocator;
+    const add_remote_output = try helpers.runChecked(
+        allocator,
+        repo_path,
+        &.{ "git", "remote", "add", remote_name, remote_path },
+    );
+    allocator.free(add_remote_output);
+}
+
+fn createRemoteOnlyBranch(repo_path: []const u8, remote_name: []const u8, branch: []const u8) !void {
+    const allocator = std.testing.allocator;
+
+    const create_branch_output = try helpers.runChecked(
+        allocator,
+        repo_path,
+        &.{ "git", "checkout", "-b", branch },
+    );
+    allocator.free(create_branch_output);
+
+    const push_output = try helpers.runChecked(
+        allocator,
+        repo_path,
+        &.{ "git", "push", "-u", remote_name, branch },
+    );
+    allocator.free(push_output);
+
+    const return_main_output = try helpers.runChecked(allocator, repo_path, &.{ "git", "checkout", "-" });
+    allocator.free(return_main_output);
+
+    const delete_local_branch_output = try helpers.runChecked(
+        allocator,
+        repo_path,
+        &.{ "git", "branch", "-D", branch },
+    );
+    allocator.free(delete_local_branch_output);
+}
+
 test "integration: setup actions run against a real worktree" {
     const allocator = std.testing.allocator;
     const repo_path = try helpers.createTestRepo(allocator);
@@ -146,4 +247,199 @@ test "integration: remove a clean worktree and delete branch" {
     );
     allocator.free(delete_branch_output);
     try expectBranchMissing(repo_path, "feat-rm-int");
+}
+
+test "integration: wt add creates local tracked branch from explicit remote branch" {
+    const allocator = std.testing.allocator;
+    const wt_bin = std.process.getEnvVarOwned(allocator, "WT_TEST_WT_BIN") catch return error.MissingWtTestBinary;
+    defer allocator.free(wt_bin);
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const remote_path = try createBareRemoteRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, remote_path);
+        allocator.free(remote_path);
+    }
+
+    try addRemote(repo_path, "origin", remote_path);
+    try createRemoteOnlyBranch(repo_path, "origin", "feature/remote-add");
+
+    const wt_path = try worktree.computeWorktreePath(allocator, repo_path, "feature/remote-add");
+    defer {
+        helpers.cleanupPath(allocator, wt_path);
+        allocator.free(wt_path);
+    }
+
+    const result = try runWt(allocator, wt_bin, repo_path, &.{ "add", "origin/feature/remote-add" });
+    defer result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(u8, 0), result.exit_code);
+    try std.fs.cwd().access(wt_path, .{});
+    try expectBranchExists(repo_path, "feature/remote-add");
+    try expectUpstream(repo_path, "feature/remote-add", "origin/feature/remote-add");
+}
+
+test "integration: wt add rejects base when branch is remote-qualified" {
+    const allocator = std.testing.allocator;
+    const wt_bin = std.process.getEnvVarOwned(allocator, "WT_TEST_WT_BIN") catch return error.MissingWtTestBinary;
+    defer allocator.free(wt_bin);
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const remote_path = try createBareRemoteRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, remote_path);
+        allocator.free(remote_path);
+    }
+
+    try addRemote(repo_path, "origin", remote_path);
+    try createRemoteOnlyBranch(repo_path, "origin", "feature/base-reject");
+
+    const result = try runWt(allocator, wt_bin, repo_path, &.{ "add", "origin/feature/base-reject", "main" });
+    defer result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "base ref is not supported") != null);
+    try expectBranchMissing(repo_path, "feature/base-reject");
+}
+
+test "integration: wt add rejects remote-qualified creation when local branch already exists" {
+    const allocator = std.testing.allocator;
+    const wt_bin = std.process.getEnvVarOwned(allocator, "WT_TEST_WT_BIN") catch return error.MissingWtTestBinary;
+    defer allocator.free(wt_bin);
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const remote_path = try createBareRemoteRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, remote_path);
+        allocator.free(remote_path);
+    }
+
+    try addRemote(repo_path, "origin", remote_path);
+    try createRemoteOnlyBranch(repo_path, "origin", "feature/local-conflict");
+
+    const local_branch_output = try helpers.runChecked(
+        allocator,
+        repo_path,
+        &.{ "git", "branch", "feature/local-conflict" },
+    );
+    allocator.free(local_branch_output);
+
+    const result = try runWt(allocator, wt_bin, repo_path, &.{ "add", "origin/feature/local-conflict" });
+    defer result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "local branch already exists") != null);
+}
+
+test "integration: wt add rejects remote-qualified creation when remote branch is missing" {
+    const allocator = std.testing.allocator;
+    const wt_bin = std.process.getEnvVarOwned(allocator, "WT_TEST_WT_BIN") catch return error.MissingWtTestBinary;
+    defer allocator.free(wt_bin);
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const remote_path = try createBareRemoteRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, remote_path);
+        allocator.free(remote_path);
+    }
+
+    try addRemote(repo_path, "origin", remote_path);
+
+    const result = try runWt(allocator, wt_bin, repo_path, &.{ "add", "origin/feature/missing" });
+    defer result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "remote branch not found") != null);
+    try expectBranchMissing(repo_path, "feature/missing");
+}
+
+test "integration: wt add uses the explicitly named remote when multiple remotes exist" {
+    const allocator = std.testing.allocator;
+    const wt_bin = std.process.getEnvVarOwned(allocator, "WT_TEST_WT_BIN") catch return error.MissingWtTestBinary;
+    defer allocator.free(wt_bin);
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const origin_path = try createBareRemoteRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, origin_path);
+        allocator.free(origin_path);
+    }
+
+    const upstream_path = try createBareRemoteRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, upstream_path);
+        allocator.free(upstream_path);
+    }
+
+    try addRemote(repo_path, "origin", origin_path);
+    try addRemote(repo_path, "upstream", upstream_path);
+    try createRemoteOnlyBranch(repo_path, "origin", "feature/shared-name");
+    try createRemoteOnlyBranch(repo_path, "upstream", "feature/shared-name");
+
+    const wt_path = try worktree.computeWorktreePath(allocator, repo_path, "feature/shared-name");
+    defer {
+        helpers.cleanupPath(allocator, wt_path);
+        allocator.free(wt_path);
+    }
+
+    const result = try runWt(allocator, wt_bin, repo_path, &.{ "add", "upstream/feature/shared-name" });
+    defer result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(u8, 0), result.exit_code);
+    try std.fs.cwd().access(wt_path, .{});
+    try expectBranchExists(repo_path, "feature/shared-name");
+    try expectUpstream(repo_path, "feature/shared-name", "upstream/feature/shared-name");
+}
+
+test "integration: wt add treats configured remote prefix branch names as remote-qualified" {
+    const allocator = std.testing.allocator;
+    const wt_bin = std.process.getEnvVarOwned(allocator, "WT_TEST_WT_BIN") catch return error.MissingWtTestBinary;
+    defer allocator.free(wt_bin);
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const remote_path = try createBareRemoteRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, remote_path);
+        allocator.free(remote_path);
+    }
+
+    try addRemote(repo_path, "origin", remote_path);
+
+    const result = try runWt(allocator, wt_bin, repo_path, &.{ "add", "origin/foo" });
+    defer result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, "remote branch not found: origin/foo") != null);
+    try expectBranchMissing(repo_path, "origin/foo");
+    try expectBranchMissing(repo_path, "foo");
 }

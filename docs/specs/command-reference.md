@@ -11,6 +11,11 @@ wt --version
 wt shell-init <shell>
 ```
 
+For `wt new|add`, `<branch>` accepts either:
+
+- a local branch name (existing or new)
+- an explicit remote-qualified branch name in the form `<remote>/<branch>`
+
 Supported shells for `shell-init` are `zsh`, `bash`, `fish`, `nu`, `nushell`.
 When using `wt shell-init bash`, the emitted shell code also registers a Bash completion function for `wt`.
 
@@ -54,6 +59,25 @@ zsh/fish/nu completion intentionally does not suggest flags.
 
 - Public command `wt new|add` (human): prints status messages to stderr and does not print the raw path on stdout.
 - Internal command `wt __new <branch> [base]` (machine): prints exactly the worktree path to stdout.
+
+## `wt new|add` branch resolution
+
+- Bare branch names never trigger remote lookup.
+- `wt new|add foo`:
+  - uses existing local branch `foo` when present
+  - otherwise creates a new local branch `foo` from `[base]` or `HEAD`
+- `wt new|add <remote>/<branch>`:
+  - is treated as a remote-branch workflow only when `<remote>` matches a configured Git remote
+  - creates a local branch named `<branch>` from `<remote>/<branch>`
+  - configures the local branch to track `<remote>/<branch>`
+  - creates the worktree for the local branch name `<branch>`
+- `BASE` is only valid for bare branch-name creation; remote-qualified creation rejects `BASE`
+
+Error cases:
+
+- remote-qualified creation fails when `<remote>/<branch>` does not exist as a remote-tracking ref
+- remote-qualified creation fails when the derived local branch already exists
+- existing worktree/path collision behavior is unchanged
 
 ## `wt list` output contracts
 

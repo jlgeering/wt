@@ -93,12 +93,12 @@ fn buildNewCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: st
 
     try cmd.addPositionalArg(.{
         .name = "BRANCH",
-        .description = "Branch name",
+        .description = "Branch name or <remote>/<branch>",
         .required = false,
     });
     try cmd.addPositionalArg(.{
         .name = "BASE",
-        .description = "Base ref (default: HEAD)",
+        .description = "Base ref for plain branch creation (default: HEAD)",
         .required = false,
     });
     return cmd;
@@ -121,12 +121,12 @@ fn buildInternalNewCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, alloc
 
     try cmd.addPositionalArg(.{
         .name = "BRANCH",
-        .description = "Branch name",
+        .description = "Branch name or <remote>/<branch>",
         .required = false,
     });
     try cmd.addPositionalArg(.{
         .name = "BASE",
-        .description = "Base ref (default: HEAD)",
+        .description = "Base ref for plain branch creation (default: HEAD)",
         .required = false,
     });
     return cmd;
@@ -251,9 +251,7 @@ fn runNew(ctx: zli.CommandContext) !void {
         try ui.printLevel(stderr, use_color, .err, "branch name required", .{});
         std.process.exit(1);
     };
-    const base = ctx.getArg("BASE") orelse "HEAD";
-
-    try new_cmd.runHuman(ctx.allocator, branch, base);
+    try new_cmd.runHuman(ctx.allocator, branch, ctx.getArg("BASE"));
 }
 
 fn runInternalNew(ctx: zli.CommandContext) !void {
@@ -263,9 +261,7 @@ fn runInternalNew(ctx: zli.CommandContext) !void {
         try ui.printLevel(stderr, use_color, .err, "branch name required", .{});
         std.process.exit(1);
     };
-    const base = ctx.getArg("BASE") orelse "HEAD";
-
-    try new_cmd.runMachine(ctx.allocator, branch, base);
+    try new_cmd.runMachine(ctx.allocator, branch, ctx.getArg("BASE"));
 }
 
 fn runRm(ctx: zli.CommandContext) !void {
