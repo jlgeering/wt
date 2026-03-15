@@ -315,3 +315,16 @@ test "parseBranchTarget resolves configured remote branch" {
         },
     }
 }
+
+test "parseBranchTarget treats configured remote prefix as remote-qualified input" {
+    const target = parseBranchTarget("origin/foo", "origin\nupstream\n");
+
+    switch (target) {
+        .local => return error.ExpectedRemoteTarget,
+        .remote => |remote_target| {
+            try std.testing.expectEqualStrings("origin/foo", remote_target.qualified_ref);
+            try std.testing.expectEqualStrings("origin", remote_target.remote);
+            try std.testing.expectEqualStrings("foo", remote_target.branch);
+        },
+    }
+}
