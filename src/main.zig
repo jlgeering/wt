@@ -9,6 +9,7 @@ const pick_worktree_cmd = @import("commands/pick_worktree.zig");
 const shell_init_cmd = @import("commands/shell_init.zig");
 const init_cmd = @import("commands/init.zig");
 const complete_cmd = @import("commands/complete.zig");
+const switch_cmd = @import("commands/switch.zig");
 const ui = @import("lib/ui.zig");
 
 const root_description = "Git worktree manager";
@@ -21,6 +22,7 @@ const root_help_text =
     "    list                                          List worktrees (WT, BASE, UPSTREAM) (alias: ls)\n" ++
     "    new                                           Create a new worktree (alias: add)\n" ++
     "    rm                                            Remove a worktree (picker status: clean|dirty plus optional local-commits)\n" ++
+    "    switch                                        Switch to an existing worktree by branch name\n" ++
     "    init                                          Create or upgrade .wt.toml with guided recommendations\n\n" ++
     "Options:\n" ++
     "    -V, --version                                 Print version and exit\n" ++
@@ -62,6 +64,8 @@ fn buildRootCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: s
         try buildNewCommand(writer, reader, allocator),
         try buildInternalListCommand(writer, reader, allocator),
         try buildInternalNewCommand(writer, reader, allocator),
+        try buildSwitchCommand(writer, reader, allocator),
+        try buildInternalSwitchCommand(writer, reader, allocator),
         try buildInternalCompleteLocalBranchesCommand(writer, reader, allocator),
         try buildInternalCompleteRefsCommand(writer, reader, allocator),
         try buildInternalCompleteRmBranchesCommand(writer, reader, allocator),
@@ -127,6 +131,35 @@ fn buildInternalNewCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, alloc
     try cmd.addPositionalArg(.{
         .name = "BASE",
         .description = "Base ref for plain branch creation (default: HEAD)",
+        .required = false,
+    });
+    return cmd;
+}
+
+fn buildSwitchCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(writer, reader, allocator, .{
+        .name = "switch",
+        .description = "Switch to an existing worktree by branch name",
+    }, runSwitch);
+
+    try cmd.addPositionalArg(.{
+        .name = "BRANCH",
+        .description = "Branch name",
+        .required = false,
+    });
+    return cmd;
+}
+
+fn buildInternalSwitchCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(writer, reader, allocator, .{
+        .name = "__switch",
+        .description = "Internal: machine-readable worktree switch",
+        .section_title = "Internal",
+    }, runInternalSwitch);
+
+    try cmd.addPositionalArg(.{
+        .name = "BRANCH",
+        .description = "Branch name",
         .required = false,
     });
     return cmd;
@@ -262,6 +295,26 @@ fn runInternalNew(ctx: zli.CommandContext) !void {
         std.process.exit(1);
     };
     try new_cmd.runMachine(ctx.allocator, branch, ctx.getArg("BASE"));
+}
+
+fn runSwitch(ctx: zli.CommandContext) !void {
+    const branch = ctx.getArg("BRANCH") orelse {
+        const stderr = std.fs.File.stderr().deprecatedWriter();
+        const use_color = ui.shouldUseColor(std.fs.File.stderr());
+        try ui.printLevel(stderr, use_color, .err, "branch name required", .{});
+        std.process.exit(1);
+    };
+    try switch_cmd.runHuman(ctx.allocator, branch);
+}
+
+fn runInternalSwitch(ctx: zli.CommandContext) !void {
+    const branch = ctx.getArg("BRANCH") orelse {
+        const stderr = std.fs.File.stderr().deprecatedWriter();
+        const use_color = ui.shouldUseColor(std.fs.File.stderr());
+        try ui.printLevel(stderr, use_color, .err, "branch name required", .{});
+        std.process.exit(1);
+    };
+    try switch_cmd.runMachine(ctx.allocator, branch);
 }
 
 fn runRm(ctx: zli.CommandContext) !void {
