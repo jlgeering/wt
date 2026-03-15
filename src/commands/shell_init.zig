@@ -164,6 +164,40 @@ fn buildPosixWrapperBody() []const u8 {
     \\            fi
     \\            return $exit_code
     \\            ;;
+    \\        switch)
+    \\            local arg
+    \\            for arg in "${@:2}"; do
+    \\                if [ "$arg" = "-h" ] || [ "$arg" = "--help" ]; then
+    \\                    command wt "$@"
+    \\                    return $?
+    \\                fi
+    \\            done
+    \\            if [ "$#" -ne 2 ]; then
+    \\                command wt "$@"
+    \\                return $?
+    \\            fi
+    \\
+    \\            local relative_subdir
+    \\            relative_subdir=$(command git rev-parse --show-prefix 2>/dev/null || true)
+    \\            relative_subdir="${relative_subdir%/}"
+    \\            local output
+    \\            output=$(command wt __switch "$2")
+    \\            local exit_code=$?
+    \\            if [ $exit_code -eq 0 ] && [ -n "$output" ] && [ -d "$output" ]; then
+    \\                local target_dir="$output"
+    \\                if [ -n "$relative_subdir" ]; then
+    \\                    local candidate_dir="$output/$relative_subdir"
+    \\                    if [ -d "$candidate_dir" ]; then
+    \\                        target_dir="$candidate_dir"
+    \\                    else
+    \\                        echo "Subdirectory missing in target worktree, using root: $output"
+    \\                    fi
+    \\                fi
+    \\                cd "$target_dir" || return 1
+    \\                __wt_report_location "$output" "$target_dir"
+    \\            fi
+    \\            return $exit_code
+    \\            ;;
     \\        *)
     \\            command wt "$@"
     \\            ;;
@@ -264,6 +298,11 @@ fn emitZshInit() []const u8 {
     \\                __wt_complete_rm_branches
     \\            fi
     \\            ;;
+    \\        switch)
+    \\            if [ "$CURRENT" -eq 3 ]; then
+    \\                __wt_complete_rm_branches
+    \\            fi
+    \\            ;;
     \\        shell-init)
     \\            if [ "$CURRENT" -eq 3 ]; then
     \\
@@ -317,7 +356,7 @@ fn emitBashInit() []const u8 {
     \\    fi
     \\
     \\    if [ "$COMP_CWORD" -eq 1 ]; then
-    \\        COMPREPLY=($(compgen -W "list ls new add rm init shell-init --help -h --version -V" -- "$cur"))
+    \\        COMPREPLY=($(compgen -W "list ls new add rm switch init shell-init --help -h --version -V" -- "$cur"))
     \\        return 0
     \\    fi
     \\
@@ -361,6 +400,16 @@ fn emitBashInit() []const u8 {
     \\            fi
     \\            if [[ "$cur" == -* ]]; then
     \\                COMPREPLY=($(compgen -W "--help -h --force -f --picker --no-interactive" -- "$cur"))
+    \\                return 0
+    \\            fi
+    \\            local branches
+    \\            branches=$(__wt_complete_worktree_branches)
+    \\            COMPREPLY=($(compgen -W "$branches" -- "$cur"))
+    \\            return 0
+    \\            ;;
+    \\        switch)
+    \\            if [[ "$cur" == -* ]]; then
+    \\                COMPREPLY=($(compgen -W "--help -h" -- "$cur"))
     \\                return 0
     \\            fi
     \\            local branches
@@ -418,6 +467,7 @@ fn emitFishInit() []const u8 {
     \\complete -f -c wt -n "__fish_seen_subcommand_from new add; and test (count (commandline -opc)) -eq 2" -a "(__wt_complete_local_branches)"
     \\complete -f -c wt -n "__fish_seen_subcommand_from new add; and test (count (commandline -opc)) -eq 3" -a "(__wt_complete_refs)"
     \\complete -f -c wt -n "__fish_seen_subcommand_from rm; and test (count (commandline -opc)) -eq 2" -a "(__wt_complete_rm_branches)"
+    \\complete -f -c wt -n "__fish_seen_subcommand_from switch; and test (count (commandline -opc)) -eq 2" -a "(__wt_complete_rm_branches)"
 ++ "\ncomplete -f -c wt -n \"__fish_seen_subcommand_from shell-init; and test (count (commandline -opc)) -eq 2\" -a \"" ++ shell_name_choices ++ "\"\n" ++
     \\
     \\function wt --wraps wt --description 'wt shell integration'
@@ -513,6 +563,30 @@ fn emitFishInit() []const u8 {
     \\                __wt_report_location "$output" "$target_dir"
     \\            end
     \\            return $exit_code
+    \\        case switch
+    \\            if test (count $argv) -ne 2
+    \\                command wt $argv
+    \\                return $status
+    \\            end
+    \\
+    \\            set -l relative_subdir (command git rev-parse --show-prefix 2>/dev/null)
+    \\            set relative_subdir (string trim -c / -- "$relative_subdir")
+    \\            set -l output (command wt __switch $argv[2])
+    \\            set -l exit_code $status
+    \\            if test $exit_code -eq 0; and test -n "$output"; and test -d "$output"
+    \\                set -l target_dir "$output"
+    \\                if test -n "$relative_subdir"
+    \\                    set -l candidate_dir "$output/$relative_subdir"
+    \\                    if test -d "$candidate_dir"
+    \\                        set target_dir "$candidate_dir"
+    \\                    else
+    \\                        echo "Subdirectory missing in target worktree, using root: $output"
+    \\                    end
+    \\                end
+    \\                cd "$target_dir"; or return 1
+    \\                __wt_report_location "$output" "$target_dir"
+    \\            end
+    \\            return $exit_code
     \\        case '*'
     \\            command wt $argv
     \\            return $status
@@ -597,6 +671,13 @@ fn emitNuInit() []const u8 {
     \\            return []
     \\        }
     \\        "rm" => {
+    \\            let positional = ($spans | skip 2 | where {|arg| not ($arg | str starts-with "-")})
+    \\            if ($positional | length) <= 1 {
+    \\                return (__wt_complete_rm_branches)
+    \\            }
+    \\            return []
+    \\        }
+    \\        "switch" => {
     \\            let positional = ($spans | skip 2 | where {|arg| not ($arg | str starts-with "-")})
     \\            if ($positional | length) <= 1 {
     \\                return (__wt_complete_rm_branches)
@@ -738,6 +819,43 @@ fn emitNuInit() []const u8 {
     \\            }
     \\            return
     \\        }
+    \\        "switch" => {
+    \\            let passthrough = ($args | skip 1)
+    \\            if ($passthrough | any {|arg| $arg == "-h" or $arg == "--help"}) {
+    \\                ^wt ...$args
+    \\                return
+    \\            }
+    \\            if ($passthrough | length) != 1 {
+    \\                ^wt ...$args
+    \\                return
+    \\            }
+    \\
+    \\            let relative_subdir = (__wt_relative_subdir)
+    \\            let switched = (^wt __switch ...$passthrough | complete)
+    \\            __wt_print_stderr $switched
+    \\            $env.LAST_EXIT_CODE = $switched.exit_code
+    \\            if $switched.exit_code != 0 {
+    \\                return
+    \\            }
+    \\
+    \\            let output = ($switched.stdout | str trim)
+    \\            if $output != "" and ($output | path exists) {
+    \\                let target_dir = if $relative_subdir == "" {
+    \\                    $output
+    \\                } else {
+    \\                    let candidate_dir = ($output | path join $relative_subdir)
+    \\                    if ($candidate_dir | path exists) {
+    \\                        $candidate_dir
+    \\                    } else {
+    \\                        print $"Subdirectory missing in target worktree, using root: ($output)"
+    \\                        $output
+    \\                    }
+    \\                }
+    \\                cd $target_dir
+    \\                __wt_report_location $output $target_dir
+    \\            }
+    \\            return
+    \\        }
     \\        _ => {
     \\            ^wt ...$args
     \\        }
@@ -816,6 +934,10 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "Subdirectory missing in new worktree, using root: $output") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "cd \"$target_dir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "switch)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __switch \"$2\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "Subdirectory missing in target worktree, using root: $output") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'switch:Switch to an existing worktree by branch name'") != null);
 }
 
 test "bash init contains function definition" {
@@ -848,7 +970,10 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "for ((i=2; i<COMP_CWORD; i++)); do") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "branches=$(__wt_complete_local_branches)") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "refs=$(__wt_complete_refs)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"list ls new add rm init shell-init --help -h --version -V\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"list ls new add rm switch init shell-init --help -h --version -V\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "switch)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "command wt __switch \"$2\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "Subdirectory missing in target worktree, using root: $output") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "--porcelain") == null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"auto builtin fzf\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"zsh bash fish nu nushell\"") != null);
@@ -882,6 +1007,11 @@ test "fish init contains function definition and completion" {
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "--force") == null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "--no-interactive") == null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "--version") == null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "case switch") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "command wt __switch $argv[2]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "Subdirectory missing in target worktree, using root: $output") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_seen_subcommand_from switch; and test (count (commandline -opc)) -eq 2\" -a \"(__wt_complete_rm_branches)\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"switch\" -d \"Switch to an existing worktree by branch name\"") != null);
 }
 
 test "nu init contains wrapper and completion definitions" {
@@ -912,4 +1042,8 @@ test "nu init contains wrapper and completion definitions" {
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "Subdirectory missing in selected worktree, using root: ($selected_path)") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "Subdirectory missing in new worktree, using root: ($output)") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "$env.LAST_EXIT_CODE = $created.exit_code") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "\"switch\" =>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __switch ...$passthrough") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "Subdirectory missing in target worktree, using root:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "{ value: \"switch\", description: \"Switch to an existing worktree by branch name\" }") != null);
 }
