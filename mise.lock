@@ -1,11 +1,20 @@
 [[tools.github-cli]]
-version = "2.83.0"
+version = "2.88.1"
 backend = "aqua:cli/cli"
+"platforms.linux-arm64" = { checksum = "sha256:039ce25aab0cfa0ea5160e3db75ed44699bde4b20ff63ec5991f82201f1b33b8", url = "https://github.com/cli/cli/releases/download/v2.88.1/gh_2.88.1_linux_arm64.tar.gz"}
+"platforms.linux-x64" = { checksum = "sha256:36352a993b97e9758793cdb87f9ba674bd6d88c914488e122be78a1962203803", url = "https://github.com/cli/cli/releases/download/v2.88.1/gh_2.88.1_linux_amd64.tar.gz"}
+"platforms.macos-arm64" = { checksum = "sha256:bdbeed4821d450ef0d14821d856c05b308ab449fbf60527f298d96fbf5d2447b", url = "https://github.com/cli/cli/releases/download/v2.88.1/gh_2.88.1_macOS_arm64.zip"}
+"platforms.macos-x64" = { checksum = "sha256:ff0fc4bdb9699f0c02e5bcdcbd09d0f8e4c4659aa5d30bcd39a3557ed7379b2e", url = "https://github.com/cli/cli/releases/download/v2.88.1/gh_2.88.1_macOS_amd64.zip"}
+"platforms.windows-x64" = { checksum = "sha256:8fdaac525d8919f9f8c265f99ffa26189e5f1fd3a35636adad4fd890a141a555", url = "https://github.com/cli/cli/releases/download/v2.88.1/gh_2.88.1_windows_amd64.zip"}
 
 [[tools."github:Dicklesworthstone/beads_rust"]]
-version = "0.1.14"
+version = "0.1.28"
 backend = "github:Dicklesworthstone/beads_rust"
-"platforms.macos-arm64" = { checksum = "sha256:d4826b0f752fa9693607c8d3f09579a0416b95313d0878b49caab243b37b2db2", url = "https://github.com/Dicklesworthstone/beads_rust/releases/download/v0.1.14/br-v0.1.14-darwin_arm64.tar.gz", url_api = "https://api.github.com/repos/Dicklesworthstone/beads_rust/releases/assets/356137809"}
+"platforms.linux-arm64" = { checksum = "sha256:ef2f07be4ad536a3d17e06b56a69a5cedf99c00f67247ba36effa08ce9d17b09", url = "https://github.com/Dicklesworthstone/beads_rust/releases/download/v0.1.28/br-v0.1.28-linux_arm64.tar.gz", url_api = "https://api.github.com/repos/Dicklesworthstone/beads_rust/releases/assets/373534698"}
+"platforms.linux-x64" = { checksum = "sha256:1fb9962e6d27a2a606aacba95460f1dd9f6c38e500ef85f9ab2073cc6bbf99e9", url = "https://github.com/Dicklesworthstone/beads_rust/releases/download/v0.1.28/br-v0.1.28-linux_amd64.tar.gz", url_api = "https://api.github.com/repos/Dicklesworthstone/beads_rust/releases/assets/373534685"}
+"platforms.macos-arm64" = { checksum = "sha256:2cab0f32f8d12a01b2006ec0c6d0d8859a0d6bebc1a378d0d7d1b0dac9d4666e", url = "https://github.com/Dicklesworthstone/beads_rust/releases/download/v0.1.28/br-v0.1.28-darwin_arm64.tar.gz", url_api = "https://api.github.com/repos/Dicklesworthstone/beads_rust/releases/assets/373534690"}
+"platforms.macos-x64" = { checksum = "sha256:4cbb779cefd86d242195b78ac3bcc19ae7937ae4a353f80c7e9bf2b761fe8355", url = "https://github.com/Dicklesworthstone/beads_rust/releases/download/v0.1.28/br-v0.1.28-darwin_amd64.tar.gz", url_api = "https://api.github.com/repos/Dicklesworthstone/beads_rust/releases/assets/373534691"}
+"platforms.windows-x64" = { checksum = "sha256:aeaa141a91f870df88aeb07a3bc26c44621ca860ee36e95381d83eb52f2531a9", url = "https://github.com/Dicklesworthstone/beads_rust/releases/download/v0.1.28/br-v0.1.28-windows_amd64.zip", url_api = "https://api.github.com/repos/Dicklesworthstone/beads_rust/releases/assets/373534693"}
 
 [[tools.zig]]
 version = "0.15.2"
