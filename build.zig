@@ -200,6 +200,8 @@ pub fn build(b: *std.Build) void {
         .filters = test_filters,
     });
     const run_integration_workflow_tests = b.addRunArtifact(integration_workflow_tests);
+    run_integration_workflow_tests.step.dependOn(b.getInstallStep());
+    run_integration_workflow_tests.setEnvironmentVariable("WT_TEST_WT_BIN", installed_wt_path);
     test_step.dependOn(&run_integration_workflow_tests.step);
 
     const integration_init_detect_test_module = b.createModule(.{

@@ -33,6 +33,7 @@ wt --version
 ```bash
 wt list
 wt new demo-branch
+wt add origin/demo-branch
 wt rm demo-branch
 ```
 
@@ -79,6 +80,9 @@ wt init
 wt --version
 wt shell-init <shell>
 ```
+
+`wt new|add` accepts either a bare branch name or an explicit remote-qualified branch like `origin/feature-x`.
+Remote-qualified creation makes a local branch from that remote branch and sets upstream tracking automatically.
 
 Supported shell targets for `shell-init`: `zsh`, `bash`, `fish`, and `nu` (alias: `nushell`).
 
