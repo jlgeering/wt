@@ -490,6 +490,18 @@ fn buildZshCompletionTraceProgram(
     );
 }
 
+fn buildBashCompletionTraceProgram(
+    allocator: std.mem.Allocator,
+    init_script_path: []const u8,
+    query: []const u8,
+) ![]u8 {
+    return std.fmt.allocPrint(
+        allocator,
+        "source \"{s}\"\ncompopt() {{ printf 'COMPOPT<%s %s>\\n' \"$1\" \"$2\"; }}\nCOMP_WORDS=({s})\nCOMP_CWORD=$((${{#COMP_WORDS[@]}} - 1))\n_wt_bash_completion\nprintf '%s\\n' \"${{COMPREPLY[@]}}\"\n",
+        .{ init_script_path, query },
+    );
+}
+
 fn runCompletionScenarioWithEnv(
     allocator: std.mem.Allocator,
     shell: ShellRuntime,
@@ -549,6 +561,38 @@ fn runZshCompletionTraceScenarioWithEnv(
     return std.process.Child.run(.{
         .allocator = allocator,
         .argv = &.{ "zsh", "-c", shell_program },
+        .cwd = cwd,
+        .env_map = &env_map,
+        .max_output_bytes = 1024 * 1024,
+    });
+}
+
+fn runBashCompletionTraceScenarioWithEnv(
+    allocator: std.mem.Allocator,
+    init_script_path: []const u8,
+    cwd: []const u8,
+    stub_bin_dir: []const u8,
+    query: []const u8,
+    env_overrides: []const EnvOverride,
+) !std.process.Child.RunResult {
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+
+    const existing_path = env_map.get("PATH") orelse "";
+    const full_path = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ stub_bin_dir, existing_path });
+    defer allocator.free(full_path);
+
+    try env_map.put("PATH", full_path);
+    for (env_overrides) |entry| {
+        try env_map.put(entry.key, entry.value);
+    }
+
+    const shell_program = try buildBashCompletionTraceProgram(allocator, init_script_path, query);
+    defer allocator.free(shell_program);
+
+    return std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "bash", "-c", shell_program },
         .cwd = cwd,
         .env_map = &env_map,
         .max_output_bytes = 1024 * 1024,
@@ -1704,7 +1748,7 @@ test "integration: shell completion parity covers partial branches flags and ali
     const completion_env = [_]EnvOverride{
         .{ .key = "WT_STUB_COMPLETE_WORKTREE_BRANCHES", .value = "somename\nsomething-else" },
         .{ .key = "WT_STUB_COMPLETE_LOCAL_BRANCHES", .value = "feature-a\nfeature-b" },
-        .{ .key = "WT_STUB_COMPLETE_BRANCH_TARGETS_ROOT", .value = "feature-a\nfeature-b\norigin/\nupstream/" },
+        .{ .key = "WT_STUB_COMPLETE_BRANCH_TARGETS_ROOT", .value = "feature-a\nfeature-b\ngithub/\norigin/\nupstream/" },
         .{ .key = "WT_STUB_COMPLETE_BRANCH_TARGETS_REMOTE", .value = "origin/feature/remote-one\norigin/feature/remote-two" },
         .{ .key = "WT_STUB_COMPLETE_REFS", .value = "origin/main\nupstream/topic" },
     };
@@ -1777,6 +1821,23 @@ test "integration: shell completion parity covers partial branches flags and ali
         if (shell_filters_candidates) {
             try expectOutputLacksLine(new_branch_target_result.stdout, "upstream/");
             try expectOutputLacksLine(new_branch_target_result.stdout, "feature-a");
+        }
+
+        const github_branch_target_result = try runCompletionScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_path,
+            stub_bin_dir,
+            "wt add gith",
+            &completion_env,
+        );
+        defer allocator.free(github_branch_target_result.stdout);
+        defer allocator.free(github_branch_target_result.stderr);
+        try expectExitCode(github_branch_target_result, 0);
+        try expectOutputContainsLine(github_branch_target_result.stdout, "github/");
+        if (shell_filters_candidates) {
+            try expectOutputLacksLine(github_branch_target_result.stdout, "origin/");
         }
 
         const remote_branch_target_result = try runCompletionScenarioWithEnv(
@@ -1935,4 +1996,59 @@ test "integration: zsh remote branch target completion keeps remote prefix unsuf
     try expectOutputContainsLine(result.stdout, "ARG<>");
     try expectOutputContainsLine(result.stdout, "ARG<-->");
     try expectOutputContainsLine(result.stdout, "ARG<github/>");
+}
+
+test "integration: bash remote branch target completion requests nospace for remote prefixes" {
+    const allocator = std.testing.allocator;
+
+    if (!shellExists(allocator, "bash")) {
+        std.debug.print("SKIP bash completion suffix test: bash not installed\n", .{});
+        return;
+    }
+
+    const temp_root = try helpers.createTempDir(allocator);
+    defer {
+        helpers.cleanupPath(allocator, temp_root);
+        allocator.free(temp_root);
+    }
+
+    const stub_bin_dir = try std.fs.path.join(allocator, &.{ temp_root, "bin" });
+    defer allocator.free(stub_bin_dir);
+    try std.fs.cwd().makePath(stub_bin_dir);
+
+    const stub_wt_path = try std.fs.path.join(allocator, &.{ stub_bin_dir, "wt" });
+    defer allocator.free(stub_wt_path);
+    try helpers.writeFile(stub_wt_path, stub_wt_script);
+    const chmod_stdout = try helpers.runChecked(allocator, null, &.{ "chmod", "+x", stub_wt_path });
+    defer allocator.free(chmod_stdout);
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const init_script = try requireScript("bash");
+    const init_script_path = try std.fs.path.join(allocator, &.{ temp_root, "bash.trace.init" });
+    defer allocator.free(init_script_path);
+    try helpers.writeFile(init_script_path, init_script);
+
+    const completion_env = [_]EnvOverride{
+        .{ .key = "WT_STUB_COMPLETE_BRANCH_TARGETS_ROOT", .value = "github/\nfeature-a" },
+    };
+
+    const result = try runBashCompletionTraceScenarioWithEnv(
+        allocator,
+        init_script_path,
+        repo_path,
+        stub_bin_dir,
+        "wt add gith",
+        &completion_env,
+    );
+    defer allocator.free(result.stdout);
+    defer allocator.free(result.stderr);
+
+    try expectExitCode(result, 0);
+    try expectOutputContainsLine(result.stdout, "COMPOPT<-o nospace>");
+    try expectOutputContainsLine(result.stdout, "github/");
 }

@@ -578,6 +578,17 @@ fn emitBashInit() []const u8 {
     \\    esac
     \\}
     \\
+    \\__wt_bash_apply_nospace_for_remote_prefixes() {
+    \\    local candidate
+    \\    for candidate in "${COMPREPLY[@]}"; do
+    \\        if [[ "$candidate" == */ ]]; then
+    \\            compopt -o nospace 2>/dev/null
+    \\            return 0
+    \\        fi
+    \\    done
+    \\    return 0
+    \\}
+    \\
     \\_wt_bash_completion() {
     \\    local cur prev cmd
     \\    COMPREPLY=()
@@ -628,6 +639,7 @@ fn emitBashInit() []const u8 {
     \\                local branches
     \\                branches=$(__wt_complete_branch_targets "$cur")
     \\                COMPREPLY=($(compgen -W "$branches" -- "$cur"))
+    \\                __wt_bash_apply_nospace_for_remote_prefixes
     \\                return 0
     \\            fi
     \\            if [ "$positional_count" -eq 1 ]; then
@@ -1259,6 +1271,7 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_worktree_branches()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_local_branches()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_branch_targets()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_bash_apply_nospace_for_remote_prefixes()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_command_flags()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_flag_values()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_refs()") != null);
@@ -1266,6 +1279,8 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "_wt_bash_completion()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "for ((i=2; i<COMP_CWORD; i++)); do") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "branches=$(__wt_complete_branch_targets \"$cur\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "compopt -o nospace 2>/dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_bash_apply_nospace_for_remote_prefixes") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "refs=$(__wt_complete_refs)") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"list ls new add rm switch init shell-init --help -h --version -V\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "flags=$(__wt_complete_command_flags \"$cmd\")") != null);
