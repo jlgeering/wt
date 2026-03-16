@@ -320,10 +320,6 @@ fn emitZshInit() []const u8 {
     \\        return 0
     \\    fi
     \\
-    \\    if [ "$CURRENT" -lt 3 ]; then
-    \\        return 0
-    \\    fi
-    \\
     \\    case "$cmd" in
     \\        list|ls)
     \\            if [[ "$words[CURRENT]" == -* ]]; then
