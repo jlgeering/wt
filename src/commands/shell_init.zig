@@ -524,9 +524,8 @@ fn emitFishInit() []const u8 {
     \\complete -c wt -n "__fish_seen_subcommand_from new add" -s h -l help -d "Show help"
     \\complete -c wt -n "__fish_seen_subcommand_from rm" -s h -l help -d "Show help"
     \\complete -c wt -n "__fish_seen_subcommand_from rm" -s f -l force -d "Force removal"
-    \\complete -c wt -n "__fish_seen_subcommand_from rm" -l picker -r -d "Picker backend"
     \\complete -c wt -n "__fish_seen_subcommand_from rm" -l no-interactive -d "Disable interactive picker"
-++ "complete -f -c wt -n \"__fish_seen_subcommand_from rm; and __fish_prev_arg_in --picker\" -a \"" ++ picker_choices ++ "\"\n" ++
+++ "complete -c wt -n \"__fish_seen_subcommand_from rm\" -l picker -x -a \"" ++ picker_choices ++ "\" -d \"Picker backend\"\n" ++
     \\complete -c wt -n "__fish_seen_subcommand_from switch" -s h -l help -d "Show help"
     \\complete -c wt -n "__fish_seen_subcommand_from init" -s h -l help -d "Show help"
     \\complete -c wt -n "__fish_seen_subcommand_from shell-init" -s h -l help -d "Show help"
@@ -1110,9 +1109,9 @@ test "fish init contains function definition and completion" {
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -c wt -n \"__fish_use_subcommand\" -s V -l version") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -c wt -n \"__fish_seen_subcommand_from list ls\" -s h -l help") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -c wt -n \"__fish_seen_subcommand_from rm\" -s f -l force") != null);
-    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -c wt -n \"__fish_seen_subcommand_from rm\" -l picker -r") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -c wt -n \"__fish_seen_subcommand_from rm\" -l picker -x -a \"auto builtin fzf\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -c wt -n \"__fish_seen_subcommand_from rm\" -l no-interactive") != null);
-    try std.testing.expect(std.mem.indexOf(u8, fish_init, "__fish_prev_arg_in --picker") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "__fish_prev_arg_in --picker") == null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"list\" -d \"List worktrees\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"ls\" -d \"Alias for list\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"add\" -d \"Alias for new\"") != null);

@@ -1738,9 +1738,7 @@ test "integration: shell completion parity covers partial branches flags and ali
         defer allocator.free(picker_value_result.stdout);
         defer allocator.free(picker_value_result.stderr);
         try expectExitCode(picker_value_result, 0);
-        if (!std.mem.eql(u8, shell.name, "fish")) {
-            try expectOutputContainsLine(picker_value_result.stdout, "builtin");
-        }
+        try expectOutputContainsLine(picker_value_result.stdout, "builtin");
         if (std.mem.eql(u8, shell.name, "bash")) {
             try expectOutputLacksLine(picker_value_result.stdout, "auto");
         }
