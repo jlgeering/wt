@@ -1,4 +1,5 @@
 const std = @import("std");
+const picker = @import("picker.zig");
 
 pub const PositionalKind = enum {
     git_ref,
@@ -11,10 +12,33 @@ pub const PositionalSpec = struct {
     kind: PositionalKind,
 };
 
+pub const FlagSpec = struct {
+    long: []const u8,
+    short: ?[]const u8 = null,
+    description: []const u8,
+    value_choices: []const []const u8 = &.{},
+};
+
+fn buildPickerValueChoices() []const []const u8 {
+    comptime var out: []const []const u8 = &.{};
+    inline for (std.meta.fields(picker.PickerMode)) |field| {
+        out = out ++ .{field.name};
+    }
+    return out;
+}
+
+pub const root_flags = [_]FlagSpec{
+    .{ .long = "help", .short = "h", .description = "Show help" },
+    .{ .long = "version", .short = "V", .description = "Print version" },
+};
+
+pub const picker_value_choices = buildPickerValueChoices();
+
 pub const CommandSpec = struct {
     name: []const u8,
     description: []const u8,
     aliases: []const []const u8 = &.{},
+    flags: []const FlagSpec = &.{},
     positionals: []const PositionalSpec = &.{},
 };
 
@@ -23,11 +47,13 @@ pub const completion_commands = [_]CommandSpec{
         .name = "list",
         .description = "List worktrees",
         .aliases = &.{"ls"},
+        .flags = &.{.{ .long = "help", .short = "h", .description = "Show help" }},
     },
     .{
         .name = "new",
         .description = "Create a new worktree",
         .aliases = &.{"add"},
+        .flags = &.{.{ .long = "help", .short = "h", .description = "Show help" }},
         .positionals = &.{
             .{ .name = "BRANCH", .kind = .git_ref },
             .{ .name = "BASE", .kind = .git_ref },
@@ -36,6 +62,12 @@ pub const completion_commands = [_]CommandSpec{
     .{
         .name = "rm",
         .description = "Remove a worktree",
+        .flags = &.{
+            .{ .long = "help", .short = "h", .description = "Show help" },
+            .{ .long = "force", .short = "f", .description = "Force removal" },
+            .{ .long = "picker", .description = "Picker backend", .value_choices = picker_value_choices },
+            .{ .long = "no-interactive", .description = "Disable interactive picker" },
+        },
         .positionals = &.{
             .{ .name = "BRANCH", .kind = .rm_branch },
         },
@@ -43,6 +75,7 @@ pub const completion_commands = [_]CommandSpec{
     .{
         .name = "switch",
         .description = "Switch to an existing worktree by branch name",
+        .flags = &.{.{ .long = "help", .short = "h", .description = "Show help" }},
         .positionals = &.{
             .{ .name = "BRANCH", .kind = .rm_branch },
         },
@@ -50,10 +83,12 @@ pub const completion_commands = [_]CommandSpec{
     .{
         .name = "init",
         .description = "Create or upgrade .wt.toml",
+        .flags = &.{.{ .long = "help", .short = "h", .description = "Show help" }},
     },
     .{
         .name = "shell-init",
         .description = "Output shell integration function",
+        .flags = &.{.{ .long = "help", .short = "h", .description = "Show help" }},
         .positionals = &.{
             .{ .name = "SHELL", .kind = .shell_name },
         },
@@ -117,6 +152,20 @@ test "commandForName resolves aliases" {
     const add_alias = commandForName("add");
     try std.testing.expect(add_alias != null);
     try std.testing.expectEqualStrings("new", add_alias.?.name);
+}
+
+test "root and rm flag metadata include generated picker values" {
+    try std.testing.expectEqual(@as(usize, 2), root_flags.len);
+    try std.testing.expectEqualStrings("help", root_flags[0].long);
+    try std.testing.expectEqualStrings("version", root_flags[1].long);
+
+    const rm_cmd = commandForName("rm");
+    try std.testing.expect(rm_cmd != null);
+    try std.testing.expectEqual(@as(usize, 4), rm_cmd.?.flags.len);
+    try std.testing.expectEqualStrings("picker", rm_cmd.?.flags[2].long);
+    try std.testing.expectEqualStrings("auto", rm_cmd.?.flags[2].value_choices[0]);
+    try std.testing.expectEqualStrings("builtin", rm_cmd.?.flags[2].value_choices[1]);
+    try std.testing.expectEqualStrings("fzf", rm_cmd.?.flags[2].value_choices[2]);
 }
 
 test "shell-init command positional uses shell_name kind" {
