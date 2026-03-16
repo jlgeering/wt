@@ -75,7 +75,7 @@ fn buildFishCommandList(command: cli_surface.CommandSpec) []const u8 {
     return out;
 }
 
-fn buildShellNameChoices() []const u8 {
+fn buildShellNameWords() []const u8 {
     return buildChoiceWords(&cli_surface.shell_names);
 }
 
@@ -217,7 +217,7 @@ fn buildNuFlagValueCases() []const u8 {
     return out;
 }
 
-fn buildNuShellNameChoices() []const u8 {
+fn buildNuShellNameWords() []const u8 {
     return buildNuChoiceWords(&cli_surface.shell_names);
 }
 
@@ -226,7 +226,7 @@ const bash_command_words = buildBashCommandWords();
 const root_flag_words = buildFlagWords(&cli_surface.root_flags);
 const zsh_command_flag_cases = buildZshCommandFlagCases();
 const zsh_flag_value_cases = buildZshFlagValueCases();
-const shell_name_choices = buildShellNameChoices();
+const shell_name_words = buildShellNameWords();
 const fish_command_completions = buildFishCommandCompletions();
 const fish_root_flag_completions = buildFishRootFlagCompletions();
 const fish_command_flag_completions = buildFishCommandFlagCompletions();
@@ -235,7 +235,7 @@ const bash_command_flag_cases = buildBashCommandFlagCases();
 const bash_flag_value_cases = buildBashFlagValueCases();
 const nu_command_flag_cases = buildNuCommandFlagCases();
 const nu_flag_value_cases = buildNuFlagValueCases();
-const nu_shell_name_choices = buildNuShellNameChoices();
+const nu_shell_name_words = buildNuShellNameWords();
 
 // Shared behavior contract across all shell-init wrappers:
 // - `wt` with no args invokes `wt __pick-worktree` only in interactive sessions.
@@ -539,7 +539,7 @@ fn emitZshInit() []const u8 {
     \\        shell-init)
     \\            if [ "$CURRENT" -eq 3 ]; then
     \\
-++ "                compadd -- " ++ shell_name_choices ++ "\n" ++
+++ "                compadd -- " ++ shell_name_words ++ "\n" ++
     \\            fi
     \\            ;;
     \\    esac
@@ -679,7 +679,7 @@ fn emitBashInit() []const u8 {
     \\            ;;
     \\        shell-init)
     \\            if [[ "$cur" != -* ]]; then
-++ "                COMPREPLY=($(compgen -W \"" ++ shell_name_choices ++ "\" -- \"$cur\"))\n" ++
+++ "                COMPREPLY=($(compgen -W \"" ++ shell_name_words ++ "\" -- \"$cur\"))\n" ++
     \\            fi
     \\            return 0
     \\            ;;
@@ -723,7 +723,7 @@ fn emitFishInit() []const u8 {
     \\complete -f -c wt -n "__fish_seen_subcommand_from new add; and test (count (commandline -opc)) -eq 3" -a "(__wt_complete_refs)"
     \\complete -f -c wt -n "__fish_seen_subcommand_from rm; and test (count (commandline -opc)) -eq 2" -a "(__wt_complete_worktree_branches)"
     \\complete -f -c wt -n "__fish_seen_subcommand_from switch; and test (count (commandline -opc)) -eq 2" -a "(__wt_complete_worktree_branches)"
-++ "\ncomplete -f -c wt -n \"__fish_seen_subcommand_from shell-init; and test (count (commandline -opc)) -eq 2\" -a \"" ++ shell_name_choices ++ "\"\n" ++
+++ "\ncomplete -f -c wt -n \"__fish_seen_subcommand_from shell-init; and test (count (commandline -opc)) -eq 2\" -a \"" ++ shell_name_words ++ "\"\n" ++
     \\
     \\function wt --wraps wt --description 'wt shell integration'
     \\    if test (count $argv) -gt 0
@@ -915,7 +915,7 @@ fn emitNuInit() []const u8 {
     \\
     \\def "__wt_complete_shell_names" [] {
     \\    [
-++ nu_shell_name_choices ++
+++ nu_shell_name_words ++
     \\    ]
     \\}
     \\
