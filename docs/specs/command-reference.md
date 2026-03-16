@@ -6,6 +6,7 @@
 wt list|ls  # ls is an alias of list
 wt new|add <branch> [base]  # add is an alias of new
 wt rm [branch] [-f|--force] [--picker auto|builtin|fzf] [--no-interactive]
+wt switch <branch>
 wt init
 wt --version
 wt shell-init <shell>
@@ -26,6 +27,7 @@ Internal commands reserved for shell wrappers:
 ```bash
 wt __list
 wt __new <branch> [base]
+wt __switch <branch>
 wt __pick-worktree
 wt __complete-local-branches
 wt __complete-refs
@@ -38,7 +40,7 @@ When users load `wt shell-init bash` (via `eval`), `wt` registers Bash completio
 
 When users load `wt shell-init zsh` (via `eval`), `wt shell-init fish` (via `source`), or `wt shell-init nu` (via `source`), `wt` registers completion for:
 
-- subcommands (`list`, `ls`, `new`, `add`, `rm`, `init`, `shell-init`)
+- subcommands (`list`, `ls`, `new`, `add`, `rm`, `switch`, `init`, `shell-init`)
 - positional arguments for `new|add`, `rm`, and `shell-init`
 
 zsh/fish/nu completion intentionally does not suggest flags.
@@ -78,6 +80,11 @@ Error cases:
 - remote-qualified creation fails when `<remote>/<branch>` does not exist as a remote-tracking ref
 - remote-qualified creation fails when the derived local branch already exists
 - existing worktree/path collision behavior is unchanged
+
+## `wt switch` output contracts
+
+- Public command `wt switch <branch>` (human): prints the worktree path to stdout on success; error to stderr and non-zero exit if no worktree found for branch.
+- Internal command `wt __switch <branch>` (machine): suppresses error messages; exits with non-zero code if branch not found. Prints worktree path to stdout on success. Used by shell wrapper.
 
 ## `wt list` output contracts
 

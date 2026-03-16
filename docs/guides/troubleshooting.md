@@ -10,7 +10,7 @@
   - Confirm your startup file includes the relevant snippet for your shell (`eval "$(wt shell-init zsh|bash)"`, `wt shell-init fish | source`, or nushell `save` + `source`).
 - Bare `wt` does not open picker in scripts/CI/non-interactive shells:
   - This is expected: shell wrappers run no-arg picker only in interactive sessions.
-  - Non-interactive bare `wt` passes through to the real binary; use explicit commands for automation (`wt list`, `wt rm <branch>`, etc.).
+  - Non-interactive bare `wt` passes through to the real binary; use explicit commands for automation (`wt list`, `wt switch <branch>`, `wt rm <branch>`, etc.).
 - Nushell no-arg `wt` picker errors are missing or behavior differs between interactive terminals vs scripts/CI:
   - Interactive Nushell sessions route picker stderr to `/dev/tty` so prompt and validation messages remain visible while picker stdout is still captured.
   - If that redirection fails, Nushell falls back to stderr capture (`| complete`) and preserves the picker exit code in `$env.LAST_EXIT_CODE`.

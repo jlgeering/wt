@@ -76,6 +76,7 @@ if (which wt | is-not-empty) {
 wt list|ls
 wt new|add <branch> [base]
 wt rm [branch] [-f|--force] [--picker auto|builtin|fzf] [--no-interactive]
+wt switch <branch>
 wt init
 wt --version
 wt shell-init <shell>
