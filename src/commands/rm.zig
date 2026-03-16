@@ -6,13 +6,10 @@ const picker = @import("../lib/picker.zig");
 const picker_format = @import("../lib/picker_format.zig");
 const ui = @import("../lib/ui.zig");
 
-pub const PickerMode = picker.PickerMode;
-pub const parsePickerMode = picker.parsePickerMode;
-
 pub const RmOptions = struct {
     branch_arg: ?[]const u8 = null,
     force: bool = false,
-    picker_mode: PickerMode = .auto,
+    picker_mode: picker.PickerMode = .auto,
     no_interactive: bool = false,
 };
 

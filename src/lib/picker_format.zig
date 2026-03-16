@@ -6,26 +6,18 @@ const worktree_status_width: usize = 20;
 const rm_branch_width: usize = 20;
 const rm_status_width: usize = 26;
 
-pub fn visibleWidth(text: []const u8) usize {
-    return column_format.visibleWidth(text);
-}
-
-fn writePadded(writer: anytype, text: []const u8, width: usize) !void {
-    try column_format.writePadded(writer, text, width);
-}
-
 fn writeWorktreeColumns(writer: anytype, branch: []const u8, status: []const u8, path: []const u8) !void {
-    try writePadded(writer, branch, worktree_branch_width);
+    try column_format.writePadded(writer, branch, worktree_branch_width);
     try writer.writeAll("  ");
-    try writePadded(writer, status, worktree_status_width);
+    try column_format.writePadded(writer, status, worktree_status_width);
     try writer.writeAll("  ");
     try writer.writeAll(path);
 }
 
 fn writeRmColumns(writer: anytype, branch: []const u8, status: []const u8, path: []const u8) !void {
-    try writePadded(writer, branch, rm_branch_width);
+    try column_format.writePadded(writer, branch, rm_branch_width);
     try writer.writeAll("  ");
-    try writePadded(writer, status, rm_status_width);
+    try column_format.writePadded(writer, status, rm_status_width);
     try writer.writeAll("  ");
     try writer.writeAll(path);
 }
@@ -80,5 +72,5 @@ test "rm header and row share column starts with arrow content" {
 
 fn columnStartWidth(line: []const u8, token: []const u8) usize {
     const idx = std.mem.indexOf(u8, line, token) orelse unreachable;
-    return visibleWidth(line[0..idx]);
+    return column_format.visibleWidth(line[0..idx]);
 }

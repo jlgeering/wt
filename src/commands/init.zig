@@ -207,10 +207,6 @@ fn promptDeclineDecision(stdout: anytype, stdin_file: std.fs.File) !DeclineDecis
     }
 }
 
-fn shouldUseColor() bool {
-    return ui.shouldUseColor(std.fs.File.stdout());
-}
-
 fn printHeading(stdout: anytype, use_color: bool, heading: []const u8) !void {
     if (use_color) {
         try stdout.print("\n{s}{s}{s}\n", .{ ui.ansi.bold, heading, ui.ansi.reset });
@@ -295,7 +291,7 @@ pub fn run(allocator: std.mem.Allocator) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
     const stderr = std.fs.File.stderr().deprecatedWriter();
     const use_stderr_color = ui.shouldUseColor(std.fs.File.stderr());
-    const use_color = shouldUseColor();
+    const use_color = ui.shouldUseColor(std.fs.File.stdout());
 
     if (!stdin_file.isTty()) {
         try ui.printLevel(stderr, use_stderr_color, .err, "wt init requires an interactive terminal", .{});

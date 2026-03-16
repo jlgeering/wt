@@ -166,11 +166,10 @@ fn runWithMode(allocator: std.mem.Allocator, branch_arg: []const u8, base_arg: ?
             std.process.exit(1);
         }
 
-        if (!is_machine) {
-            try ui.printLevel(stderr, use_color, .warn, "worktree already exists at {s}", .{wt_path});
-        }
         if (is_machine) {
             try stdout.print("{s}\n", .{wt_path});
+        } else {
+            try ui.printLevel(stderr, use_color, .warn, "worktree already exists at {s}", .{wt_path});
         }
         return;
     } else |_| {}

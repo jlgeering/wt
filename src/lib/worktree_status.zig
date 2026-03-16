@@ -61,10 +61,6 @@ fn writeStatusSummary(row: WorktreeRow, writer: anytype, use_unicode_arrows: boo
     }
 }
 
-pub fn writeHumanStatusSummary(row: WorktreeRow, writer: anytype) void {
-    writeStatusSummary(row, writer, false);
-}
-
 pub fn humanStatusSummary(row: WorktreeRow, buffer: []u8) []const u8 {
     var fbs = std.io.fixedBufferStream(buffer);
     writeStatusSummary(row, fbs.writer(), false);

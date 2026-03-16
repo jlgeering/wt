@@ -155,14 +155,15 @@ pub fn countNonEquivalentLocalCommits(
 
 /// Run a git command and return stdout. Caller owns returned memory.
 pub fn runGit(allocator: std.mem.Allocator, cwd: ?[]const u8, args: []const []const u8) ![]u8 {
-    var argv = std.array_list.Managed([]const u8).init(allocator);
-    defer argv.deinit();
-    try argv.append("git");
-    try argv.appendSlice(args);
+    var argv_buf: [16][]const u8 = undefined;
+    if (args.len + 1 > argv_buf.len) return error.GitCommandFailed;
+    argv_buf[0] = "git";
+    @memcpy(argv_buf[1..][0..args.len], args);
+    const argv = argv_buf[0 .. args.len + 1];
 
     const result = std.process.Child.run(.{
         .allocator = allocator,
-        .argv = argv.items,
+        .argv = argv,
         .cwd = cwd,
     }) catch {
         return error.GitNotFound;

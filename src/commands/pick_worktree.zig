@@ -6,9 +6,6 @@ const picker_format = @import("../lib/picker_format.zig");
 const worktree_status = @import("../lib/worktree_status.zig");
 const ui = @import("../lib/ui.zig");
 
-pub const PickerMode = picker.PickerMode;
-pub const parsePickerMode = picker.parsePickerMode;
-
 /// Checks stderr because stdout carries the selected path for shell integration.
 fn isInteractiveSession() bool {
     return std.fs.File.stdin().isTty() and std.fs.File.stderr().isTty();
@@ -214,7 +211,7 @@ fn selectViaFzf(
     return selected - 1;
 }
 
-pub fn run(allocator: std.mem.Allocator, requested_picker: PickerMode) !void {
+pub fn run(allocator: std.mem.Allocator, requested_picker: picker.PickerMode) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
     const stderr = std.fs.File.stderr().deprecatedWriter();
     const use_color = ui.shouldUseColor(std.fs.File.stderr());

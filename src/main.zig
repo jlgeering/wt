@@ -10,6 +10,7 @@ const shell_init_cmd = @import("commands/shell_init.zig");
 const init_cmd = @import("commands/init.zig");
 const complete_cmd = @import("commands/complete.zig");
 const switch_cmd = @import("commands/switch.zig");
+const picker = @import("lib/picker.zig");
 const ui = @import("lib/ui.zig");
 
 const root_description = "Git worktree manager";
@@ -260,6 +261,15 @@ fn buildPickWorktreeCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allo
     return cmd;
 }
 
+fn parsePickerModeOrExit(raw: []const u8) picker.PickerMode {
+    return picker.parsePickerMode(raw) catch {
+        const stderr = std.fs.File.stderr().deprecatedWriter();
+        const use_color = ui.shouldUseColor(std.fs.File.stderr());
+        ui.printLevel(stderr, use_color, .err, "invalid picker '{s}'. Expected auto, builtin, or fzf", .{raw}) catch {};
+        std.process.exit(1);
+    };
+}
+
 fn requireArg(ctx: zli.CommandContext, name: []const u8, comptime message: []const u8) []const u8 {
     return ctx.getArg(name) orelse {
         const stderr = std.fs.File.stderr().deprecatedWriter();
@@ -307,14 +317,7 @@ fn runInternalSwitch(ctx: zli.CommandContext) !void {
 }
 
 fn runRm(ctx: zli.CommandContext) !void {
-    const picker_raw = ctx.flag("picker", []const u8);
-    const picker_mode = rm_cmd.parsePickerMode(picker_raw) catch {
-        const stderr = std.fs.File.stderr().deprecatedWriter();
-        const use_color = ui.shouldUseColor(std.fs.File.stderr());
-        try ui.printLevel(stderr, use_color, .err, "invalid picker '{s}'. Expected auto, builtin, or fzf", .{picker_raw});
-        std.process.exit(1);
-    };
-
+    const picker_mode = parsePickerModeOrExit(ctx.flag("picker", []const u8));
     try rm_cmd.run(ctx.allocator, .{
         .branch_arg = ctx.getArg("BRANCH"),
         .force = ctx.flag("force", bool),
@@ -345,14 +348,7 @@ fn runShellInit(ctx: zli.CommandContext) !void {
 }
 
 fn runPickWorktree(ctx: zli.CommandContext) !void {
-    const picker_raw = ctx.flag("picker", []const u8);
-    const picker_mode = pick_worktree_cmd.parsePickerMode(picker_raw) catch {
-        const stderr = std.fs.File.stderr().deprecatedWriter();
-        const use_color = ui.shouldUseColor(std.fs.File.stderr());
-        try ui.printLevel(stderr, use_color, .err, "invalid picker '{s}'. Expected auto, builtin, or fzf", .{picker_raw});
-        std.process.exit(1);
-    };
-
+    const picker_mode = parsePickerModeOrExit(ctx.flag("picker", []const u8));
     try pick_worktree_cmd.run(ctx.allocator, picker_mode);
 }
 
