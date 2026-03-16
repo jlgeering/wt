@@ -1674,6 +1674,7 @@ test "integration: shell completion parity covers partial branches flags and ali
         }
 
         ran_any_shell = true;
+        const shell_filters_candidates = std.mem.eql(u8, shell.name, "bash") or std.mem.eql(u8, shell.name, "fish");
 
         const init_script = try requireScript(shell.name);
         const init_script_name = try std.fmt.allocPrint(allocator, "{s}.completion.init", .{shell.name});
@@ -1695,6 +1696,9 @@ test "integration: shell completion parity covers partial branches flags and ali
         defer allocator.free(switch_result.stderr);
         try expectExitCode(switch_result, 0);
         try expectOutputContainsLine(switch_result.stdout, "somename");
+        if (shell_filters_candidates) {
+            try expectOutputLacksLine(switch_result.stdout, "something-else");
+        }
 
         const rm_result = try runCompletionScenarioWithEnv(
             allocator,
@@ -1709,6 +1713,9 @@ test "integration: shell completion parity covers partial branches flags and ali
         defer allocator.free(rm_result.stderr);
         try expectExitCode(rm_result, 0);
         try expectOutputContainsLine(rm_result.stdout, "somename");
+        if (shell_filters_candidates) {
+            try expectOutputLacksLine(rm_result.stdout, "something-else");
+        }
 
         const new_branch_target_result = try runCompletionScenarioWithEnv(
             allocator,
@@ -1723,6 +1730,10 @@ test "integration: shell completion parity covers partial branches flags and ali
         defer allocator.free(new_branch_target_result.stderr);
         try expectExitCode(new_branch_target_result, 0);
         try expectOutputContainsLine(new_branch_target_result.stdout, "origin/");
+        if (shell_filters_candidates) {
+            try expectOutputLacksLine(new_branch_target_result.stdout, "upstream/");
+            try expectOutputLacksLine(new_branch_target_result.stdout, "feature-a");
+        }
 
         const remote_branch_target_result = try runCompletionScenarioWithEnv(
             allocator,
@@ -1752,6 +1763,9 @@ test "integration: shell completion parity covers partial branches flags and ali
         defer allocator.free(root_flag_result.stderr);
         try expectExitCode(root_flag_result, 0);
         try expectOutputContainsLine(root_flag_result.stdout, "--version");
+        if (shell_filters_candidates) {
+            try expectOutputLacksLine(root_flag_result.stdout, "--help");
+        }
 
         const rm_flag_result = try runCompletionScenarioWithEnv(
             allocator,
@@ -1768,6 +1782,23 @@ test "integration: shell completion parity covers partial branches flags and ali
         try expectOutputContainsLine(rm_flag_result.stdout, "--picker");
         try expectOutputContainsLine(rm_flag_result.stdout, "--force");
 
+        const rm_force_flag_result = try runCompletionScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_path,
+            stub_bin_dir,
+            "wt rm --f",
+            &completion_env,
+        );
+        defer allocator.free(rm_force_flag_result.stdout);
+        defer allocator.free(rm_force_flag_result.stderr);
+        try expectExitCode(rm_force_flag_result, 0);
+        try expectOutputContainsLine(rm_force_flag_result.stdout, "--force");
+        if (shell_filters_candidates) {
+            try expectOutputLacksLine(rm_force_flag_result.stdout, "--picker");
+        }
+
         const picker_value_result = try runCompletionScenarioWithEnv(
             allocator,
             shell,
@@ -1781,7 +1812,7 @@ test "integration: shell completion parity covers partial branches flags and ali
         defer allocator.free(picker_value_result.stderr);
         try expectExitCode(picker_value_result, 0);
         try expectOutputContainsLine(picker_value_result.stdout, "builtin");
-        if (std.mem.eql(u8, shell.name, "bash")) {
+        if (shell_filters_candidates) {
             try expectOutputLacksLine(picker_value_result.stdout, "auto");
         }
 
