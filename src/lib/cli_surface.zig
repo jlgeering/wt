@@ -3,7 +3,6 @@ const std = @import("std");
 pub const PositionalKind = enum {
     git_ref,
     rm_branch,
-    switch_branch,
     shell_name,
 };
 
@@ -45,7 +44,7 @@ pub const completion_commands = [_]CommandSpec{
         .name = "switch",
         .description = "Switch to an existing worktree by branch name",
         .positionals = &.{
-            .{ .name = "BRANCH", .kind = .switch_branch },
+            .{ .name = "BRANCH", .kind = .rm_branch },
         },
     },
     .{

@@ -68,7 +68,7 @@ fn buildRootCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: s
         try buildInternalSwitchCommand(writer, reader, allocator),
         try buildInternalCompleteLocalBranchesCommand(writer, reader, allocator),
         try buildInternalCompleteRefsCommand(writer, reader, allocator),
-        try buildInternalCompleteRmBranchesCommand(writer, reader, allocator),
+        try buildInternalCompleteWorktreeBranchesCommand(writer, reader, allocator),
         try buildRmCommand(writer, reader, allocator),
         try buildInitCommand(writer, reader, allocator),
         try buildShellInitCommand(writer, reader, allocator),
@@ -214,12 +214,12 @@ fn buildInternalCompleteRefsCommand(writer: *std.Io.Writer, reader: *std.Io.Read
     }, runInternalCompleteRefs);
 }
 
-fn buildInternalCompleteRmBranchesCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+fn buildInternalCompleteWorktreeBranchesCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
     return zli.Command.init(writer, reader, allocator, .{
-        .name = "__complete-rm-branches",
-        .description = "Internal: completion candidates for `wt rm` branch argument",
+        .name = "__complete-worktree-branches",
+        .description = "Internal: completion candidates for worktree branch arguments",
         .section_title = "Internal",
-    }, runInternalCompleteRmBranches);
+    }, runInternalCompleteWorktreeBranches);
 }
 
 fn buildInitCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
@@ -346,8 +346,8 @@ fn runInternalCompleteRefs(ctx: zli.CommandContext) !void {
     try complete_cmd.runRefs(ctx.allocator);
 }
 
-fn runInternalCompleteRmBranches(ctx: zli.CommandContext) !void {
-    try complete_cmd.runRmBranches(ctx.allocator);
+fn runInternalCompleteWorktreeBranches(ctx: zli.CommandContext) !void {
+    try complete_cmd.runWorktreeBranches(ctx.allocator);
 }
 
 fn runShellInit(ctx: zli.CommandContext) !void {

@@ -19,7 +19,7 @@ fn writeUniqueLinesFromOutput(
     }
 }
 
-fn writeRmBranchCandidates(
+fn writeWorktreeBranchCandidates(
     allocator: std.mem.Allocator,
     worktrees: []const git.WorktreeInfo,
     current_root: ?[]const u8,
@@ -63,7 +63,7 @@ pub fn runRefs(allocator: std.mem.Allocator) !void {
     try writeUniqueLinesFromOutput(allocator, output, stdout);
 }
 
-pub fn runRmBranches(allocator: std.mem.Allocator) !void {
+pub fn runWorktreeBranches(allocator: std.mem.Allocator) !void {
     const list_output = git.runGit(
         allocator,
         null,
@@ -85,7 +85,7 @@ pub fn runRmBranches(allocator: std.mem.Allocator) !void {
     } else |_| {}
 
     const stdout = std.fs.File.stdout().deprecatedWriter();
-    try writeRmBranchCandidates(allocator, worktrees, current_root, stdout);
+    try writeWorktreeBranchCandidates(allocator, worktrees, current_root, stdout);
 }
 
 test "writeUniqueLinesFromOutput deduplicates and drops blanks" {
@@ -101,7 +101,7 @@ test "writeUniqueLinesFromOutput deduplicates and drops blanks" {
     try std.testing.expectEqualStrings("main\nfeat\nfeature-two\n", out.items);
 }
 
-test "writeRmBranchCandidates excludes current and detached entries" {
+test "writeWorktreeBranchCandidates excludes current and detached entries" {
     const worktrees = [_]git.WorktreeInfo{
         .{ .path = "/repo", .head = "a", .branch = "main", .is_bare = false },
         .{ .path = "/repo--feat", .head = "b", .branch = "feat", .is_bare = false },
@@ -113,7 +113,7 @@ test "writeRmBranchCandidates excludes current and detached entries" {
     var out = std.array_list.Managed(u8).init(std.testing.allocator);
     defer out.deinit();
 
-    try writeRmBranchCandidates(
+    try writeWorktreeBranchCandidates(
         std.testing.allocator,
         &worktrees,
         "/repo",
