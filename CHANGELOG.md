@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-03-16
+
+### Added
+
+- Added remote branch target completion for shell integration so `wt new|add` can suggest explicit `<remote>/<branch>` refs.
+
+### Fixed
+
+- Fixed completion parity issues across shells, including fish picker value completion and suppressing trailing spaces after remote prefixes in bash and zsh.
+- Fixed `wt rm` stderr-bound messaging to respect stderr color behavior consistently.
+
+### Changed
+
+- Refactored completion metadata generation and supporting helpers to reduce dead code, tighten edge-case coverage, and keep shell command/flag suggestions aligned.
+
 ## [0.4.0] - 2026-03-16
 
 ### Added
@@ -85,6 +100,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Core worktree management commands: `list`, `new`, `rm`, and `init`.
 - Shell integration support via `wt shell-init` for `zsh`, `bash`, `fish`, and `nu`.
 
+[0.5.0]: https://github.com/jlgeering/wt/releases/tag/v0.5.0
 [0.4.0]: https://github.com/jlgeering/wt/releases/tag/v0.4.0
 [0.3.0]: https://github.com/jlgeering/wt/releases/tag/v0.3.0
 [0.2.1]: https://github.com/jlgeering/wt/releases/tag/v0.2.1
