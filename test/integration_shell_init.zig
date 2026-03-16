@@ -63,6 +63,18 @@ const stub_wt_script =
     \\      exit "$WT_STUB_NEW_EXIT"
     \\    fi
     \\    ;;
+    \\  __switch)
+    \\    shift || true
+    \\    if [ -n "${WT_STUB_SWITCH_STDERR:-}" ]; then
+    \\      printf '%s\n' "$WT_STUB_SWITCH_STDERR" >&2
+    \\    fi
+    \\    if [ -n "${WT_STUB_SWITCH_PATH:-}" ]; then
+    \\      printf '%s\n' "$WT_STUB_SWITCH_PATH"
+    \\    fi
+    \\    if [ -n "${WT_STUB_SWITCH_EXIT:-}" ]; then
+    \\      exit "$WT_STUB_SWITCH_EXIT"
+    \\    fi
+    \\    ;;
     \\  *)
     \\    if [ -n "${WT_STUB_DEFAULT_STDERR:-}" ]; then
     \\      printf '%s\n' "$WT_STUB_DEFAULT_STDERR" >&2
@@ -372,6 +384,70 @@ fn buildNoArgStatusProgram(
         "{s}source \"{s}\"\nwt\nwt_status=$?\nprintf 'WT_STATUS=%s\\n' \"$wt_status\"\nprintf 'PWD=%s\\n' \"$PWD\"\n",
         .{ prefix, init_script_path },
     );
+}
+
+fn buildInvocationStatusProgram(
+    allocator: std.mem.Allocator,
+    shell: ShellRuntime,
+    init_script_path: []const u8,
+    invocation: []const u8,
+) ![]u8 {
+    if (std.mem.eql(u8, shell.name, "nu")) {
+        return std.fmt.allocPrint(
+            allocator,
+            "source \"{s}\"\ntry {{ wt {s} }} catch {{ }}\nprint ('WT_STATUS=' + ($env.LAST_EXIT_CODE | into string))\nprint ('PWD=' + $env.PWD)\n",
+            .{ init_script_path, invocation },
+        );
+    }
+    if (std.mem.eql(u8, shell.name, "fish")) {
+        return std.fmt.allocPrint(
+            allocator,
+            "source \"{s}\"\nwt {s}\nset wt_status $status\nprintf 'WT_STATUS=%s\\n' \"$wt_status\"\nprintf 'PWD=%s\\n' \"$PWD\"\n",
+            .{ init_script_path, invocation },
+        );
+    }
+
+    const prefix = if (std.mem.eql(u8, shell.name, "zsh")) "compdef() { :; }\n" else "";
+    return std.fmt.allocPrint(
+        allocator,
+        "{s}source \"{s}\"\nwt {s}\nwt_status=$?\nprintf 'WT_STATUS=%s\\n' \"$wt_status\"\nprintf 'PWD=%s\\n' \"$PWD\"\n",
+        .{ prefix, init_script_path, invocation },
+    );
+}
+
+fn runStatusShellScenarioWithEnv(
+    allocator: std.mem.Allocator,
+    shell: ShellRuntime,
+    init_script_path: []const u8,
+    cwd: []const u8,
+    stub_bin_dir: []const u8,
+    invocation: []const u8,
+    log_path: []const u8,
+    env_overrides: []const EnvOverride,
+) !std.process.Child.RunResult {
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+
+    const existing_path = env_map.get("PATH") orelse "";
+    const full_path = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ stub_bin_dir, existing_path });
+    defer allocator.free(full_path);
+
+    try env_map.put("PATH", full_path);
+    try env_map.put("WT_STUB_LOG", log_path);
+    for (env_overrides) |entry| {
+        try env_map.put(entry.key, entry.value);
+    }
+
+    const shell_program = try buildInvocationStatusProgram(allocator, shell, init_script_path, invocation);
+    defer allocator.free(shell_program);
+
+    return std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ shell.bin, "-c", shell_program },
+        .cwd = cwd,
+        .env_map = &env_map,
+        .max_output_bytes = 1024 * 1024,
+    });
 }
 
 fn expectExitCode(result: std.process.Child.RunResult, expected_code: u8) !void {
@@ -688,6 +764,348 @@ test "integration: wrapper failure paths keep cwd and surface __new stderr for z
 
     if (!ran_any_shell) {
         std.debug.print("SKIP wrapper failure-path test: zsh/bash/fish/nu not installed\n", .{});
+    }
+}
+
+test "integration: zsh/bash/fish/nu wrapper runtime parity for switch flow" {
+    const allocator = std.testing.allocator;
+    const rel_subdir = "sub/inner";
+
+    const temp_root = try helpers.createTempDir(allocator);
+    defer {
+        helpers.cleanupPath(allocator, temp_root);
+        allocator.free(temp_root);
+    }
+
+    const stub_bin_dir = try std.fs.path.join(allocator, &.{ temp_root, "bin" });
+    defer allocator.free(stub_bin_dir);
+    try std.fs.cwd().makePath(stub_bin_dir);
+
+    const stub_wt_path = try std.fs.path.join(allocator, &.{ stub_bin_dir, "wt" });
+    defer allocator.free(stub_wt_path);
+    try helpers.writeFile(stub_wt_path, stub_wt_script);
+    {
+        const chmod_stdout = try helpers.runChecked(allocator, null, &.{ "chmod", "+x", stub_wt_path });
+        allocator.free(chmod_stdout);
+    }
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const repo_subdir = try std.fs.path.join(allocator, &.{ repo_path, rel_subdir });
+    defer allocator.free(repo_subdir);
+    try std.fs.cwd().makePath(repo_subdir);
+
+    const switch_with_subdir = try helpers.createTempDir(allocator);
+    defer {
+        helpers.cleanupPath(allocator, switch_with_subdir);
+        allocator.free(switch_with_subdir);
+    }
+    const switched_subdir = try std.fs.path.join(allocator, &.{ switch_with_subdir, rel_subdir });
+    defer allocator.free(switched_subdir);
+    try std.fs.cwd().makePath(switched_subdir);
+
+    const switch_root_only = try helpers.createTempDir(allocator);
+    defer {
+        helpers.cleanupPath(allocator, switch_root_only);
+        allocator.free(switch_root_only);
+    }
+
+    var ran_any_shell = false;
+
+    for (runtime_shells) |shell| {
+        if (!shellExists(allocator, shell.bin)) {
+            std.debug.print("SKIP {s} switch runtime parity test: shell not installed\n", .{shell.name});
+            continue;
+        }
+
+        ran_any_shell = true;
+
+        const init_script = try requireScript(shell.name);
+        const init_script_name = try std.fmt.allocPrint(allocator, "{s}.switch.init", .{shell.name});
+        defer allocator.free(init_script_name);
+        const init_script_path = try std.fs.path.join(allocator, &.{ temp_root, init_script_name });
+        defer allocator.free(init_script_path);
+        try helpers.writeFile(init_script_path, init_script);
+
+        const preserved_log_name = try std.fmt.allocPrint(allocator, "{s}.switch.preserve.log", .{shell.name});
+        defer allocator.free(preserved_log_name);
+        const preserved_log_path = try std.fs.path.join(allocator, &.{ temp_root, preserved_log_name });
+        defer allocator.free(preserved_log_path);
+        try helpers.writeFile(preserved_log_path, "");
+
+        const preserved_switch = try runStatusShellScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_subdir,
+            stub_bin_dir,
+            "switch feat-switch-preserve",
+            preserved_log_path,
+            &.{.{ .key = "WT_STUB_SWITCH_PATH", .value = switch_with_subdir }},
+        );
+        defer allocator.free(preserved_switch.stdout);
+        defer allocator.free(preserved_switch.stderr);
+        try expectExitCode(preserved_switch, 0);
+
+        const preserved_pwd_marker = try std.fmt.allocPrint(allocator, "PWD={s}", .{switched_subdir});
+        defer allocator.free(preserved_pwd_marker);
+        const preserved_report = try std.fmt.allocPrint(allocator, "Entered worktree: {s}", .{switch_with_subdir});
+        defer allocator.free(preserved_report);
+        const subdir_report = try std.fmt.allocPrint(allocator, "Subdirectory: {s}", .{rel_subdir});
+        defer allocator.free(subdir_report);
+        try std.testing.expect(std.mem.indexOf(u8, preserved_switch.stdout, "WT_STATUS=0") != null);
+        try std.testing.expect(std.mem.indexOf(u8, preserved_switch.stdout, preserved_report) != null);
+        try std.testing.expect(std.mem.indexOf(u8, preserved_switch.stdout, subdir_report) != null);
+        try std.testing.expect(std.mem.indexOf(u8, preserved_switch.stdout, preserved_pwd_marker) != null);
+        const preserved_log = try helpers.readFileAlloc(allocator, preserved_log_path);
+        defer allocator.free(preserved_log);
+        try std.testing.expect(std.mem.indexOf(u8, preserved_log, "__switch feat-switch-preserve") != null);
+
+        const fallback_log_name = try std.fmt.allocPrint(allocator, "{s}.switch.fallback.log", .{shell.name});
+        defer allocator.free(fallback_log_name);
+        const fallback_log_path = try std.fs.path.join(allocator, &.{ temp_root, fallback_log_name });
+        defer allocator.free(fallback_log_path);
+        try helpers.writeFile(fallback_log_path, "");
+
+        const fallback_switch = try runStatusShellScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_subdir,
+            stub_bin_dir,
+            "switch feat-switch-fallback",
+            fallback_log_path,
+            &.{.{ .key = "WT_STUB_SWITCH_PATH", .value = switch_root_only }},
+        );
+        defer allocator.free(fallback_switch.stdout);
+        defer allocator.free(fallback_switch.stderr);
+        try expectExitCode(fallback_switch, 0);
+
+        const fallback_msg = try std.fmt.allocPrint(
+            allocator,
+            "Subdirectory missing in target worktree, using root: {s}",
+            .{switch_root_only},
+        );
+        defer allocator.free(fallback_msg);
+        const fallback_pwd_marker = try std.fmt.allocPrint(allocator, "PWD={s}", .{switch_root_only});
+        defer allocator.free(fallback_pwd_marker);
+        try std.testing.expect(std.mem.indexOf(u8, fallback_switch.stdout, "WT_STATUS=0") != null);
+        try std.testing.expect(std.mem.indexOf(u8, fallback_switch.stdout, fallback_msg) != null);
+        try std.testing.expect(std.mem.indexOf(u8, fallback_switch.stdout, fallback_pwd_marker) != null);
+        const fallback_log = try helpers.readFileAlloc(allocator, fallback_log_path);
+        defer allocator.free(fallback_log);
+        try std.testing.expect(std.mem.indexOf(u8, fallback_log, "__switch feat-switch-fallback") != null);
+    }
+
+    if (!ran_any_shell) {
+        std.debug.print("SKIP switch runtime parity checks: zsh/bash/fish/nu not installed\n", .{});
+    }
+}
+
+test "integration: switch wrapper failure paths keep cwd and surface __switch stderr for zsh/bash/fish/nu" {
+    const allocator = std.testing.allocator;
+    const rel_subdir = "sub/inner";
+    const failure_stderr = "simulated __switch failure";
+
+    const temp_root = try helpers.createTempDir(allocator);
+    defer {
+        helpers.cleanupPath(allocator, temp_root);
+        allocator.free(temp_root);
+    }
+
+    const stub_bin_dir = try std.fs.path.join(allocator, &.{ temp_root, "bin" });
+    defer allocator.free(stub_bin_dir);
+    try std.fs.cwd().makePath(stub_bin_dir);
+
+    const stub_wt_path = try std.fs.path.join(allocator, &.{ stub_bin_dir, "wt" });
+    defer allocator.free(stub_wt_path);
+    try helpers.writeFile(stub_wt_path, stub_wt_script);
+    {
+        const chmod_stdout = try helpers.runChecked(allocator, null, &.{ "chmod", "+x", stub_wt_path });
+        allocator.free(chmod_stdout);
+    }
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const repo_subdir = try std.fs.path.join(allocator, &.{ repo_path, rel_subdir });
+    defer allocator.free(repo_subdir);
+    try std.fs.cwd().makePath(repo_subdir);
+
+    var ran_any_shell = false;
+
+    for (runtime_shells) |shell| {
+        if (!shellExists(allocator, shell.bin)) {
+            std.debug.print("SKIP {s} switch failure-path test: shell not installed\n", .{shell.name});
+            continue;
+        }
+
+        ran_any_shell = true;
+
+        const init_script = try requireScript(shell.name);
+        const init_script_name = try std.fmt.allocPrint(allocator, "{s}.switch.failure.init", .{shell.name});
+        defer allocator.free(init_script_name);
+        const init_script_path = try std.fs.path.join(allocator, &.{ temp_root, init_script_name });
+        defer allocator.free(init_script_path);
+        try helpers.writeFile(init_script_path, init_script);
+
+        const unchanged_pwd_marker = try std.fmt.allocPrint(allocator, "PWD={s}", .{repo_subdir});
+        defer allocator.free(unchanged_pwd_marker);
+
+        const fail_log_name = try std.fmt.allocPrint(allocator, "{s}.switch.fail.log", .{shell.name});
+        defer allocator.free(fail_log_name);
+        const fail_log_path = try std.fs.path.join(allocator, &.{ temp_root, fail_log_name });
+        defer allocator.free(fail_log_path);
+        try helpers.writeFile(fail_log_path, "");
+
+        const failed_switch = try runStatusShellScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_subdir,
+            stub_bin_dir,
+            "switch feat-failing-switch",
+            fail_log_path,
+            &.{
+                .{ .key = "WT_STUB_SWITCH_STDERR", .value = failure_stderr },
+                .{ .key = "WT_STUB_SWITCH_EXIT", .value = "19" },
+            },
+        );
+        defer allocator.free(failed_switch.stdout);
+        defer allocator.free(failed_switch.stderr);
+        try expectExitCode(failed_switch, 0);
+
+        const failed_output = try std.fmt.allocPrint(allocator, "{s}\n{s}", .{ failed_switch.stdout, failed_switch.stderr });
+        defer allocator.free(failed_output);
+        try std.testing.expect(std.mem.indexOf(u8, failed_switch.stdout, "WT_STATUS=19") != null);
+        try std.testing.expect(std.mem.indexOf(u8, failed_output, failure_stderr) != null);
+        try std.testing.expect(std.mem.indexOf(u8, failed_switch.stdout, unchanged_pwd_marker) != null);
+        try std.testing.expect(std.mem.indexOf(u8, failed_switch.stdout, "Entered worktree:") == null);
+        const fail_log = try helpers.readFileAlloc(allocator, fail_log_path);
+        defer allocator.free(fail_log);
+        try std.testing.expect(std.mem.indexOf(u8, fail_log, "__switch feat-failing-switch") != null);
+
+        const empty_log_name = try std.fmt.allocPrint(allocator, "{s}.switch.empty.log", .{shell.name});
+        defer allocator.free(empty_log_name);
+        const empty_log_path = try std.fs.path.join(allocator, &.{ temp_root, empty_log_name });
+        defer allocator.free(empty_log_path);
+        try helpers.writeFile(empty_log_path, "");
+
+        const empty_switch = try runStatusShellScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_subdir,
+            stub_bin_dir,
+            "switch feat-empty-switch",
+            empty_log_path,
+            &.{},
+        );
+        defer allocator.free(empty_switch.stdout);
+        defer allocator.free(empty_switch.stderr);
+        try expectExitCode(empty_switch, 0);
+        try std.testing.expect(std.mem.indexOf(u8, empty_switch.stdout, "WT_STATUS=0") != null);
+        try std.testing.expect(std.mem.indexOf(u8, empty_switch.stdout, unchanged_pwd_marker) != null);
+        try std.testing.expect(std.mem.indexOf(u8, empty_switch.stdout, "Entered worktree:") == null);
+        const empty_log = try helpers.readFileAlloc(allocator, empty_log_path);
+        defer allocator.free(empty_log);
+        try std.testing.expect(std.mem.indexOf(u8, empty_log, "__switch feat-empty-switch") != null);
+    }
+
+    if (!ran_any_shell) {
+        std.debug.print("SKIP switch failure-path test: zsh/bash/fish/nu not installed\n", .{});
+    }
+}
+
+test "integration: switch help passthrough preserves cwd for zsh/bash/fish/nu" {
+    const allocator = std.testing.allocator;
+    const rel_subdir = "sub/inner";
+
+    const temp_root = try helpers.createTempDir(allocator);
+    defer {
+        helpers.cleanupPath(allocator, temp_root);
+        allocator.free(temp_root);
+    }
+
+    const stub_bin_dir = try std.fs.path.join(allocator, &.{ temp_root, "bin" });
+    defer allocator.free(stub_bin_dir);
+    try std.fs.cwd().makePath(stub_bin_dir);
+
+    const stub_wt_path = try std.fs.path.join(allocator, &.{ stub_bin_dir, "wt" });
+    defer allocator.free(stub_wt_path);
+    try helpers.writeFile(stub_wt_path, stub_wt_script);
+    {
+        const chmod_stdout = try helpers.runChecked(allocator, null, &.{ "chmod", "+x", stub_wt_path });
+        allocator.free(chmod_stdout);
+    }
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const repo_subdir = try std.fs.path.join(allocator, &.{ repo_path, rel_subdir });
+    defer allocator.free(repo_subdir);
+    try std.fs.cwd().makePath(repo_subdir);
+
+    var ran_any_shell = false;
+
+    for (runtime_shells) |shell| {
+        if (!shellExists(allocator, shell.bin)) {
+            std.debug.print("SKIP {s} switch help passthrough test: shell not installed\n", .{shell.name});
+            continue;
+        }
+
+        ran_any_shell = true;
+
+        const init_script = try requireScript(shell.name);
+        const init_script_name = try std.fmt.allocPrint(allocator, "{s}.switch.help.init", .{shell.name});
+        defer allocator.free(init_script_name);
+        const init_script_path = try std.fs.path.join(allocator, &.{ temp_root, init_script_name });
+        defer allocator.free(init_script_path);
+        try helpers.writeFile(init_script_path, init_script);
+
+        const help_log_name = try std.fmt.allocPrint(allocator, "{s}.switch.help.log", .{shell.name});
+        defer allocator.free(help_log_name);
+        const help_log_path = try std.fs.path.join(allocator, &.{ temp_root, help_log_name });
+        defer allocator.free(help_log_path);
+        try helpers.writeFile(help_log_path, "");
+
+        const help_result = try runStatusShellScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_subdir,
+            stub_bin_dir,
+            "switch --help",
+            help_log_path,
+            &.{},
+        );
+        defer allocator.free(help_result.stdout);
+        defer allocator.free(help_result.stderr);
+        try expectExitCode(help_result, 0);
+
+        const unchanged_pwd_marker = try std.fmt.allocPrint(allocator, "PWD={s}", .{repo_subdir});
+        defer allocator.free(unchanged_pwd_marker);
+        try std.testing.expect(std.mem.indexOf(u8, help_result.stdout, "WT_STATUS=0") != null);
+        try std.testing.expect(std.mem.indexOf(u8, help_result.stdout, unchanged_pwd_marker) != null);
+        try std.testing.expect(std.mem.indexOf(u8, help_result.stdout, "Entered worktree:") == null);
+
+        const help_log = try helpers.readFileAlloc(allocator, help_log_path);
+        defer allocator.free(help_log);
+        try std.testing.expect(std.mem.indexOf(u8, help_log, "switch --help") != null);
+    }
+
+    if (!ran_any_shell) {
+        std.debug.print("SKIP switch help passthrough test: zsh/bash/fish/nu not installed\n", .{});
     }
 }
 
