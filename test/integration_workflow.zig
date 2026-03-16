@@ -284,6 +284,43 @@ test "integration: wt add creates local tracked branch from explicit remote bran
     try expectUpstream(repo_path, "feature/remote-add", "origin/feature/remote-add");
 }
 
+test "integration: wt __new prints worktree path for explicit remote branch" {
+    const allocator = std.testing.allocator;
+    const wt_bin = std.process.getEnvVarOwned(allocator, "WT_TEST_WT_BIN") catch return error.MissingWtTestBinary;
+    defer allocator.free(wt_bin);
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const remote_path = try createBareRemoteRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, remote_path);
+        allocator.free(remote_path);
+    }
+
+    try addRemote(repo_path, "origin", remote_path);
+    try createRemoteOnlyBranch(repo_path, "origin", "feature/remote-machine");
+
+    const wt_path = try worktree.computeWorktreePath(allocator, repo_path, "feature/remote-machine");
+    defer {
+        helpers.cleanupPath(allocator, wt_path);
+        allocator.free(wt_path);
+    }
+
+    const result = try runWt(allocator, wt_bin, repo_path, &.{ "__new", "origin/feature/remote-machine" });
+    defer result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(u8, 0), result.exit_code);
+    try std.testing.expectEqualStrings(wt_path, std.mem.trim(u8, result.stdout, " \t\r\n"));
+    try std.testing.expectEqualStrings("", result.stderr);
+    try std.fs.cwd().access(wt_path, .{});
+    try expectBranchExists(repo_path, "feature/remote-machine");
+    try expectUpstream(repo_path, "feature/remote-machine", "origin/feature/remote-machine");
+}
+
 test "integration: wt add rejects base when branch is remote-qualified" {
     const allocator = std.testing.allocator;
     const wt_bin = std.process.getEnvVarOwned(allocator, "WT_TEST_WT_BIN") catch return error.MissingWtTestBinary;
