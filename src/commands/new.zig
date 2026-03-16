@@ -243,7 +243,20 @@ fn runWithMode(allocator: std.mem.Allocator, branch_arg: []const u8, base_arg: ?
             defer allocator.free(upstream_arg);
 
             const upstream_result = git.runGit(allocator, wt_path, &.{ "branch", upstream_arg, branch }) catch {
-                try ui.printLevel(stderr, use_color, .err, "failed to configure upstream tracking", .{});
+                try ui.printLevel(
+                    stderr,
+                    use_color,
+                    .err,
+                    "worktree created at {s}, but upstream tracking failed for branch '{s}'",
+                    .{ wt_path, branch },
+                );
+                try ui.printLevel(
+                    stderr,
+                    use_color,
+                    .info,
+                    "set it manually with `git -C {s} branch --set-upstream-to={s} {s}`",
+                    .{ wt_path, remote_target.qualified_ref, branch },
+                );
                 std.process.exit(1);
             };
             allocator.free(upstream_result);

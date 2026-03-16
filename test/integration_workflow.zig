@@ -51,6 +51,16 @@ const CliResult = struct {
 };
 
 fn runWt(allocator: std.mem.Allocator, wt_bin: []const u8, cwd: []const u8, argv: []const []const u8) !CliResult {
+    return runWtWithEnv(allocator, wt_bin, cwd, argv, null);
+}
+
+fn runWtWithEnv(
+    allocator: std.mem.Allocator,
+    wt_bin: []const u8,
+    cwd: []const u8,
+    argv: []const []const u8,
+    env_map: ?*std.process.EnvMap,
+) !CliResult {
     var full_argv = std.array_list.Managed([]const u8).init(allocator);
     defer full_argv.deinit();
 
@@ -61,6 +71,7 @@ fn runWt(allocator: std.mem.Allocator, wt_bin: []const u8, cwd: []const u8, argv
         .allocator = allocator,
         .argv = full_argv.items,
         .cwd = cwd,
+        .env_map = env_map,
     });
 
     const exit_code = switch (result.term) {
@@ -73,6 +84,12 @@ fn runWt(allocator: std.mem.Allocator, wt_bin: []const u8, cwd: []const u8, argv
         .stderr = result.stderr,
         .exit_code = exit_code,
     };
+}
+
+fn resolveCommandPath(allocator: std.mem.Allocator, command_name: []const u8) ![]u8 {
+    const output = try helpers.runChecked(allocator, null, &.{ "which", command_name });
+    defer allocator.free(output);
+    return allocator.dupe(u8, std.mem.trim(u8, output, " \t\r\n"));
 }
 
 fn createBareRemoteRepo(allocator: std.mem.Allocator) ![]u8 {
@@ -408,6 +425,88 @@ test "integration: wt add rejects remote-qualified creation when remote branch i
     try std.testing.expectEqual(@as(u8, 1), result.exit_code);
     try std.testing.expect(std.mem.indexOf(u8, result.stderr, "remote branch not found") != null);
     try expectBranchMissing(repo_path, "feature/missing");
+}
+
+test "integration: wt add reports partial failure when upstream tracking setup fails" {
+    const allocator = std.testing.allocator;
+    const wt_bin = std.process.getEnvVarOwned(allocator, "WT_TEST_WT_BIN") catch return error.MissingWtTestBinary;
+    defer allocator.free(wt_bin);
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const remote_path = try createBareRemoteRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, remote_path);
+        allocator.free(remote_path);
+    }
+
+    try addRemote(repo_path, "origin", remote_path);
+    try createRemoteOnlyBranch(repo_path, "origin", "feature/upstream-fail");
+
+    const wt_path = try worktree.computeWorktreePath(allocator, repo_path, "feature/upstream-fail");
+    defer {
+        helpers.cleanupPath(allocator, wt_path);
+        allocator.free(wt_path);
+    }
+
+    const shim_bin_dir = try std.fs.path.join(allocator, &.{ repo_path, ".test-bin" });
+    defer allocator.free(shim_bin_dir);
+    try std.fs.cwd().makePath(shim_bin_dir);
+
+    const real_git = try resolveCommandPath(allocator, "git");
+    defer allocator.free(real_git);
+
+    const git_wrapper_path = try std.fs.path.join(allocator, &.{ shim_bin_dir, "git" });
+    defer allocator.free(git_wrapper_path);
+    const git_wrapper = try std.fmt.allocPrint(
+        allocator,
+        "#!/bin/sh\nif [ \"$1\" = \"branch\" ] && [ \"$2\" = \"--set-upstream-to=origin/feature/upstream-fail\" ] && [ \"$3\" = \"feature/upstream-fail\" ]; then\n  exit 1\nfi\nexec \"{s}\" \"$@\"\n",
+        .{real_git},
+    );
+    defer allocator.free(git_wrapper);
+    try helpers.writeFile(git_wrapper_path, git_wrapper);
+    {
+        const chmod_output = try helpers.runChecked(allocator, null, &.{ "chmod", "+x", git_wrapper_path });
+        allocator.free(chmod_output);
+    }
+
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+    const existing_path = env_map.get("PATH") orelse "";
+    const full_path = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ shim_bin_dir, existing_path });
+    defer allocator.free(full_path);
+    try env_map.put("PATH", full_path);
+
+    const result = try runWtWithEnv(
+        allocator,
+        wt_bin,
+        repo_path,
+        &.{ "add", "origin/feature/upstream-fail" },
+        &env_map,
+    );
+    defer result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(u8, 1), result.exit_code);
+    const expected_error = try std.fmt.allocPrint(
+        allocator,
+        "worktree created at {s}, but upstream tracking failed for branch 'feature/upstream-fail'",
+        .{wt_path},
+    );
+    defer allocator.free(expected_error);
+    const expected_manual = try std.fmt.allocPrint(
+        allocator,
+        "git -C {s} branch --set-upstream-to=origin/feature/upstream-fail feature/upstream-fail",
+        .{wt_path},
+    );
+    defer allocator.free(expected_manual);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, expected_error) != null);
+    try std.testing.expect(std.mem.indexOf(u8, result.stderr, expected_manual) != null);
+    try std.fs.cwd().access(wt_path, .{});
+    try expectBranchExists(repo_path, "feature/upstream-fail");
 }
 
 test "integration: wt add uses the explicitly named remote when multiple remotes exist" {
