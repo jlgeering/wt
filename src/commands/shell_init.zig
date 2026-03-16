@@ -416,6 +416,7 @@ fn emitZshInit() []const u8 {
     \\    local current_word="$1"
     \\    local branch
     \\    local -a branches
+    \\    local -a remote_prefixes
     \\    typeset -A seen
     \\    while IFS= read -r branch; do
     \\        if [ -z "$branch" ]; then
@@ -423,11 +424,18 @@ fn emitZshInit() []const u8 {
     \\        fi
     \\        if [ -z "${seen[$branch]}" ]; then
     \\            seen[$branch]=1
-    \\            branches+=("$branch")
+    \\            if [[ "$branch" == */ ]]; then
+    \\                remote_prefixes+=("$branch")
+    \\            else
+    \\                branches+=("$branch")
+    \\            fi
     \\        fi
     \\    done < <(command wt __complete-branch-targets "$current_word" 2>/dev/null)
     \\    if [ "${#branches[@]}" -gt 0 ]; then
     \\        compadd -- "${branches[@]}"
+    \\    fi
+    \\    if [ "${#remote_prefixes[@]}" -gt 0 ]; then
+    \\        compadd -S '' -- "${remote_prefixes[@]}"
     \\    fi
     \\}
     \\
@@ -1187,6 +1195,8 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "case \"$1:$2\" in") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __complete-local-branches 2>/dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __complete-branch-targets \"$current_word\" 2>/dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "local -a remote_prefixes") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -S '' -- \"${remote_prefixes[@]}\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __complete-refs 2>/dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "while IFS= read -r branch; do") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "IFS=$'\\t'") == null);

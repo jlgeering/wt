@@ -478,6 +478,18 @@ fn buildCompletionProgram(
     );
 }
 
+fn buildZshCompletionTraceProgram(
+    allocator: std.mem.Allocator,
+    init_script_path: []const u8,
+    query: []const u8,
+) ![]u8 {
+    return std.fmt.allocPrint(
+        allocator,
+        "autoload -Uz compinit\ncompinit\nsource \"{s}\"\ncompadd() {{ for arg in \"$@\"; do print -r -- \"ARG<$arg>\"; done }}\n_describe() {{ shift 2; for arg in \"$@\"; do print -r -- \"ARG<$arg>\"; done }}\nwords=({s})\nCURRENT=$#words\n_wt\n",
+        .{ init_script_path, query },
+    );
+}
+
 fn runCompletionScenarioWithEnv(
     allocator: std.mem.Allocator,
     shell: ShellRuntime,
@@ -505,6 +517,38 @@ fn runCompletionScenarioWithEnv(
     return std.process.Child.run(.{
         .allocator = allocator,
         .argv = &.{ shell.bin, "-c", shell_program },
+        .cwd = cwd,
+        .env_map = &env_map,
+        .max_output_bytes = 1024 * 1024,
+    });
+}
+
+fn runZshCompletionTraceScenarioWithEnv(
+    allocator: std.mem.Allocator,
+    init_script_path: []const u8,
+    cwd: []const u8,
+    stub_bin_dir: []const u8,
+    query: []const u8,
+    env_overrides: []const EnvOverride,
+) !std.process.Child.RunResult {
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+
+    const existing_path = env_map.get("PATH") orelse "";
+    const full_path = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ stub_bin_dir, existing_path });
+    defer allocator.free(full_path);
+
+    try env_map.put("PATH", full_path);
+    for (env_overrides) |entry| {
+        try env_map.put(entry.key, entry.value);
+    }
+
+    const shell_program = try buildZshCompletionTraceProgram(allocator, init_script_path, query);
+    defer allocator.free(shell_program);
+
+    return std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "zsh", "-c", shell_program },
         .cwd = cwd,
         .env_map = &env_map,
         .max_output_bytes = 1024 * 1024,
@@ -1834,4 +1878,61 @@ test "integration: shell completion parity covers partial branches flags and ali
     if (!ran_any_shell) {
         std.debug.print("SKIP completion parity test: zsh/bash/fish/nu not installed\n", .{});
     }
+}
+
+test "integration: zsh remote branch target completion keeps remote prefix unsuffixed by space" {
+    const allocator = std.testing.allocator;
+
+    if (!shellExists(allocator, "zsh")) {
+        std.debug.print("SKIP zsh completion suffix test: zsh not installed\n", .{});
+        return;
+    }
+
+    const temp_root = try helpers.createTempDir(allocator);
+    defer {
+        helpers.cleanupPath(allocator, temp_root);
+        allocator.free(temp_root);
+    }
+
+    const stub_bin_dir = try std.fs.path.join(allocator, &.{ temp_root, "bin" });
+    defer allocator.free(stub_bin_dir);
+    try std.fs.cwd().makePath(stub_bin_dir);
+
+    const stub_wt_path = try std.fs.path.join(allocator, &.{ stub_bin_dir, "wt" });
+    defer allocator.free(stub_wt_path);
+    try helpers.writeFile(stub_wt_path, stub_wt_script);
+    const chmod_stdout = try helpers.runChecked(allocator, null, &.{ "chmod", "+x", stub_wt_path });
+    defer allocator.free(chmod_stdout);
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const init_script = try requireScript("zsh");
+    const init_script_path = try std.fs.path.join(allocator, &.{ temp_root, "zsh.trace.init" });
+    defer allocator.free(init_script_path);
+    try helpers.writeFile(init_script_path, init_script);
+
+    const completion_env = [_]EnvOverride{
+        .{ .key = "WT_STUB_COMPLETE_BRANCH_TARGETS_ROOT", .value = "github/\nfeature-a" },
+    };
+
+    const result = try runZshCompletionTraceScenarioWithEnv(
+        allocator,
+        init_script_path,
+        repo_path,
+        stub_bin_dir,
+        "wt add gith",
+        &completion_env,
+    );
+    defer allocator.free(result.stdout);
+    defer allocator.free(result.stderr);
+
+    try expectExitCode(result, 0);
+    try expectOutputContainsLine(result.stdout, "ARG<-S>");
+    try expectOutputContainsLine(result.stdout, "ARG<>");
+    try expectOutputContainsLine(result.stdout, "ARG<-->");
+    try expectOutputContainsLine(result.stdout, "ARG<github/>");
 }
