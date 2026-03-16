@@ -90,6 +90,17 @@ fn buildFishCommandCompletions() []const u8 {
     return out;
 }
 
+fn buildBashCommandWords() []const u8 {
+    comptime var out: []const u8 = "";
+    inline for (cli_surface.completion_commands) |command| {
+        out = out ++ command.name ++ " ";
+        inline for (command.aliases) |alias| {
+            out = out ++ alias ++ " ";
+        }
+    }
+    return out;
+}
+
 fn buildFishRootFlagCompletions() []const u8 {
     comptime var out: []const u8 = "";
     inline for (cli_surface.root_flags) |flag| {
@@ -211,6 +222,7 @@ fn buildNuShellNameChoices() []const u8 {
 }
 
 const zsh_command_choices = buildZshCommandChoices();
+const bash_command_words = buildBashCommandWords();
 const root_flag_words = buildFlagWords(&cli_surface.root_flags);
 const zsh_command_flag_cases = buildZshCommandFlagCases();
 const zsh_flag_value_cases = buildZshFlagValueCases();
@@ -603,7 +615,7 @@ fn emitBashInit() []const u8 {
     \\    fi
     \\
     \\    if [ "$COMP_CWORD" -eq 1 ]; then
-++ "        COMPREPLY=($(compgen -W \"list ls new add rm switch init shell-init " ++ root_flag_words ++ "\" -- \"$cur\"))\n" ++
+++ "        COMPREPLY=($(compgen -W \"" ++ bash_command_words ++ root_flag_words ++ "\" -- \"$cur\"))\n" ++
     \\        return 0
     \\    fi
     \\
