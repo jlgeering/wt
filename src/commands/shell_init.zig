@@ -13,48 +13,27 @@ fn buildZshCommandChoices() []const u8 {
     return out;
 }
 
-fn buildFlagWords(flags: []const cli_surface.FlagSpec) []const u8 {
+fn joinFlagWords(flags: []const cli_surface.FlagSpec, comptime quoted: bool) []const u8 {
+    const q = if (quoted) "\"" else "";
     comptime var out: []const u8 = "";
     comptime var first = true;
     inline for (flags) |flag| {
         if (!first) out = out ++ " ";
-        out = out ++ "--" ++ flag.long;
+        out = out ++ q ++ "--" ++ flag.long ++ q;
         first = false;
         if (flag.short) |short| {
-            out = out ++ " -" ++ short;
+            out = out ++ " " ++ q ++ "-" ++ short ++ q;
         }
     }
     return out;
 }
 
-fn buildNuFlagWords(flags: []const cli_surface.FlagSpec) []const u8 {
-    comptime var out: []const u8 = "";
-    comptime var first = true;
-    inline for (flags) |flag| {
-        if (!first) out = out ++ " ";
-        out = out ++ "\"--" ++ flag.long ++ "\"";
-        first = false;
-        if (flag.short) |short| {
-            out = out ++ " \"-" ++ short ++ "\"";
-        }
-    }
-    return out;
-}
-
-fn buildChoiceWords(choices: []const []const u8) []const u8 {
+fn joinWords(choices: []const []const u8, comptime quoted: bool) []const u8 {
+    const q = if (quoted) "\"" else "";
     comptime var out: []const u8 = "";
     inline for (choices, 0..) |choice, idx| {
         if (idx != 0) out = out ++ " ";
-        out = out ++ choice;
-    }
-    return out;
-}
-
-fn buildNuChoiceWords(choices: []const []const u8) []const u8 {
-    comptime var out: []const u8 = "";
-    inline for (choices, 0..) |choice, idx| {
-        if (idx != 0) out = out ++ " ";
-        out = out ++ "\"" ++ choice ++ "\"";
+        out = out ++ q ++ choice ++ q;
     }
     return out;
 }
@@ -73,10 +52,6 @@ fn buildFishCommandList(command: cli_surface.CommandSpec) []const u8 {
         out = out ++ " " ++ alias;
     }
     return out;
-}
-
-fn buildShellNameWords() []const u8 {
-    return buildChoiceWords(&cli_surface.shell_names);
 }
 
 fn buildFishCommandCompletions() []const u8 {
@@ -120,7 +95,7 @@ fn buildFishCommandFlagCompletions() []const u8 {
             if (flag.short) |short| out = out ++ " -s " ++ short;
             out = out ++ " -l " ++ flag.long;
             if (flag.value_choices.len != 0) {
-                out = out ++ " -x -a \"" ++ buildChoiceWords(flag.value_choices) ++ "\"";
+                out = out ++ " -x -a \"" ++ joinWords(flag.value_choices, false) ++ "\"";
             }
             out = out ++ " -d \"" ++ flag.description ++ "\"\n";
         }
@@ -143,7 +118,7 @@ fn buildZshCommandFlagCases() []const u8 {
     comptime var out: []const u8 = "";
     inline for (cli_surface.completion_commands) |command| {
         out = out ++ "        " ++ buildCommandPattern(command) ++ ")\n";
-        out = out ++ "            compadd -- " ++ buildFlagWords(command.flags) ++ "\n";
+        out = out ++ "            compadd -- " ++ joinFlagWords(command.flags, false) ++ "\n";
         out = out ++ "            ;;\n";
     }
     return out;
@@ -155,7 +130,7 @@ fn buildZshFlagValueCases() []const u8 {
         inline for (command.flags) |flag| {
             if (flag.value_choices.len == 0) continue;
             out = out ++ "        " ++ buildCommandPattern(command) ++ ":--" ++ flag.long ++ ")\n";
-            out = out ++ "            compadd -- " ++ buildChoiceWords(flag.value_choices) ++ "\n";
+            out = out ++ "            compadd -- " ++ joinWords(flag.value_choices, false) ++ "\n";
             out = out ++ "            ;;\n";
         }
     }
@@ -166,7 +141,7 @@ fn buildBashCommandFlagCases() []const u8 {
     comptime var out: []const u8 = "";
     inline for (cli_surface.completion_commands) |command| {
         out = out ++ "        " ++ buildCommandPattern(command) ++ ")\n";
-        out = out ++ "            printf '%s' \"" ++ buildFlagWords(command.flags) ++ "\"\n";
+        out = out ++ "            printf '%s' \"" ++ joinFlagWords(command.flags, false) ++ "\"\n";
         out = out ++ "            ;;\n";
     }
     return out;
@@ -178,7 +153,7 @@ fn buildBashFlagValueCases() []const u8 {
         inline for (command.flags) |flag| {
             if (flag.value_choices.len == 0) continue;
             out = out ++ "        " ++ buildCommandPattern(command) ++ ":--" ++ flag.long ++ ")\n";
-            out = out ++ "            printf '%s' \"" ++ buildChoiceWords(flag.value_choices) ++ "\"\n";
+            out = out ++ "            printf '%s' \"" ++ joinWords(flag.value_choices, false) ++ "\"\n";
             out = out ++ "            ;;\n";
         }
     }
@@ -193,7 +168,7 @@ fn buildNuCommandFlagCases() []const u8 {
             out = out ++ " | \"" ++ alias ++ "\"";
         }
         out = out ++ " => {\n";
-        out = out ++ "            [" ++ buildNuFlagWords(command.flags) ++ "]\n";
+        out = out ++ "            [" ++ joinFlagWords(command.flags, true) ++ "]\n";
         out = out ++ "        }\n";
     }
     return out;
@@ -205,11 +180,11 @@ fn buildNuFlagValueCases() []const u8 {
         inline for (command.flags) |flag| {
             if (flag.value_choices.len == 0) continue;
             out = out ++ "        \"" ++ command.name ++ ":--" ++ flag.long ++ "\" => {\n";
-            out = out ++ "            [" ++ buildNuChoiceWords(flag.value_choices) ++ "]\n";
+            out = out ++ "            [" ++ joinWords(flag.value_choices, true) ++ "]\n";
             out = out ++ "        }\n";
             inline for (command.aliases) |alias| {
                 out = out ++ "        \"" ++ alias ++ ":--" ++ flag.long ++ "\" => {\n";
-                out = out ++ "            [" ++ buildNuChoiceWords(flag.value_choices) ++ "]\n";
+                out = out ++ "            [" ++ joinWords(flag.value_choices, true) ++ "]\n";
                 out = out ++ "        }\n";
             }
         }
@@ -217,16 +192,12 @@ fn buildNuFlagValueCases() []const u8 {
     return out;
 }
 
-fn buildNuShellNameWords() []const u8 {
-    return buildNuChoiceWords(&cli_surface.shell_names);
-}
-
 const zsh_command_choices = buildZshCommandChoices();
 const bash_command_words = buildBashCommandWords();
-const root_flag_words = buildFlagWords(&cli_surface.root_flags);
+const root_flag_words = joinFlagWords(&cli_surface.root_flags, false);
 const zsh_command_flag_cases = buildZshCommandFlagCases();
 const zsh_flag_value_cases = buildZshFlagValueCases();
-const shell_name_words = buildShellNameWords();
+const shell_name_words = joinWords(&cli_surface.shell_names, false);
 const fish_command_completions = buildFishCommandCompletions();
 const fish_root_flag_completions = buildFishRootFlagCompletions();
 const fish_command_flag_completions = buildFishCommandFlagCompletions();
@@ -235,7 +206,8 @@ const bash_command_flag_cases = buildBashCommandFlagCases();
 const bash_flag_value_cases = buildBashFlagValueCases();
 const nu_command_flag_cases = buildNuCommandFlagCases();
 const nu_flag_value_cases = buildNuFlagValueCases();
-const nu_shell_name_words = buildNuShellNameWords();
+const nu_root_flag_words = joinFlagWords(&cli_surface.root_flags, true);
+const nu_shell_name_words = joinWords(&cli_surface.shell_names, true);
 
 // Shared behavior contract across all shell-init wrappers:
 // - `wt` with no args invokes `wt __pick-worktree` only in interactive sessions.
@@ -921,7 +893,7 @@ fn emitNuInit() []const u8 {
     \\
     \\def "__wt_complete_root_flags" [] {
     \\    [
-++ "        " ++ buildNuFlagWords(&cli_surface.root_flags) ++ "\n" ++
+++ "        " ++ nu_root_flag_words ++ "\n" ++
     \\    ]
     \\}
     \\
@@ -1388,4 +1360,13 @@ test "nu init contains wrapper and completion definitions" {
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __switch ...$passthrough") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "Subdirectory missing in target worktree, using root:") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "{ value: \"switch\", description: \"Switch to an existing worktree by branch name\" }") != null);
+}
+
+test "scriptForShell returns null for unsupported shells" {
+    try std.testing.expectEqual(@as(?[]const u8, null), scriptForShell("python"));
+    try std.testing.expectEqual(@as(?[]const u8, null), scriptForShell(""));
+}
+
+test "scriptForShell treats nu and nushell as equivalent" {
+    try std.testing.expectEqual(scriptForShell("nu"), scriptForShell("nushell"));
 }
