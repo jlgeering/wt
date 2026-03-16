@@ -139,8 +139,6 @@ fn runWithMode(allocator: std.mem.Allocator, branch_arg: []const u8, base_arg: ?
         .local => {},
     }
 
-    const base = base_arg orelse "HEAD";
-
     // Find main worktree (first in list)
     const wt_output = git.runGit(allocator, null, &.{ "worktree", "list", "--porcelain" }) catch {
         try ui.printLevel(stderr, use_color, .err, "not a git repository or git not found", .{});
@@ -193,6 +191,7 @@ fn runWithMode(allocator: std.mem.Allocator, branch_arg: []const u8, base_arg: ?
                 };
                 allocator.free(add_result);
             } else {
+                const base = base_arg orelse "HEAD";
                 const add_result = git.runGit(allocator, null, &.{ "worktree", "add", "-b", branch, wt_path, base }) catch {
                     try ui.printLevel(stderr, use_color, .err, "failed to create worktree", .{});
                     std.process.exit(1);
