@@ -68,6 +68,7 @@ fn buildRootCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: s
         try buildSwitchCommand(writer, reader, allocator),
         try buildInternalSwitchCommand(writer, reader, allocator),
         try buildInternalCompleteLocalBranchesCommand(writer, reader, allocator),
+        try buildInternalCompleteBranchTargetsCommand(writer, reader, allocator),
         try buildInternalCompleteRefsCommand(writer, reader, allocator),
         try buildInternalCompleteWorktreeBranchesCommand(writer, reader, allocator),
         try buildRmCommand(writer, reader, allocator),
@@ -215,6 +216,21 @@ fn buildInternalCompleteRefsCommand(writer: *std.Io.Writer, reader: *std.Io.Read
     }, runInternalCompleteRefs);
 }
 
+fn buildInternalCompleteBranchTargetsCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
+    const cmd = try zli.Command.init(writer, reader, allocator, .{
+        .name = "__complete-branch-targets",
+        .description = "Internal: completion candidates for new/add branch targets",
+        .section_title = "Internal",
+    }, runInternalCompleteBranchTargets);
+
+    try cmd.addPositionalArg(.{
+        .name = "CURRENT",
+        .description = "Current partial branch target",
+        .required = false,
+    });
+    return cmd;
+}
+
 fn buildInternalCompleteWorktreeBranchesCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allocator: std.mem.Allocator) !*zli.Command {
     return zli.Command.init(writer, reader, allocator, .{
         .name = "__complete-worktree-branches",
@@ -332,6 +348,10 @@ fn runInit(ctx: zli.CommandContext) !void {
 
 fn runInternalCompleteLocalBranches(ctx: zli.CommandContext) !void {
     try complete_cmd.runLocalBranches(ctx.allocator);
+}
+
+fn runInternalCompleteBranchTargets(ctx: zli.CommandContext) !void {
+    try complete_cmd.runBranchTargets(ctx.allocator, ctx.getArg("CURRENT"));
 }
 
 fn runInternalCompleteRefs(ctx: zli.CommandContext) !void {

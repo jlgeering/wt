@@ -80,6 +80,17 @@ const stub_wt_script =
     \\      printf '%s\n' "$WT_STUB_COMPLETE_LOCAL_BRANCHES"
     \\    fi
     \\    ;;
+    \\  __complete-branch-targets)
+    \\    shift || true
+    \\    current="${1:-}"
+    \\    if [ -n "$current" ] && [ "${current#origin/}" != "$current" ]; then
+    \\      if [ -n "${WT_STUB_COMPLETE_BRANCH_TARGETS_REMOTE:-}" ]; then
+    \\        printf '%s\n' "$WT_STUB_COMPLETE_BRANCH_TARGETS_REMOTE"
+    \\      fi
+    \\    elif [ -n "${WT_STUB_COMPLETE_BRANCH_TARGETS_ROOT:-}" ]; then
+    \\      printf '%s\n' "$WT_STUB_COMPLETE_BRANCH_TARGETS_ROOT"
+    \\    fi
+    \\    ;;
     \\  __complete-refs)
     \\    if [ -n "${WT_STUB_COMPLETE_REFS:-}" ]; then
     \\      printf '%s\n' "$WT_STUB_COMPLETE_REFS"
@@ -1649,6 +1660,8 @@ test "integration: shell completion parity covers partial branches flags and ali
     const completion_env = [_]EnvOverride{
         .{ .key = "WT_STUB_COMPLETE_WORKTREE_BRANCHES", .value = "somename\nsomething-else" },
         .{ .key = "WT_STUB_COMPLETE_LOCAL_BRANCHES", .value = "feature-a\nfeature-b" },
+        .{ .key = "WT_STUB_COMPLETE_BRANCH_TARGETS_ROOT", .value = "feature-a\nfeature-b\norigin/\nupstream/" },
+        .{ .key = "WT_STUB_COMPLETE_BRANCH_TARGETS_REMOTE", .value = "origin/feature/remote-one\norigin/feature/remote-two" },
         .{ .key = "WT_STUB_COMPLETE_REFS", .value = "origin/main\nupstream/topic" },
     };
 
@@ -1696,6 +1709,35 @@ test "integration: shell completion parity covers partial branches flags and ali
         defer allocator.free(rm_result.stderr);
         try expectExitCode(rm_result, 0);
         try expectOutputContainsLine(rm_result.stdout, "somename");
+
+        const new_branch_target_result = try runCompletionScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_path,
+            stub_bin_dir,
+            "wt add or",
+            &completion_env,
+        );
+        defer allocator.free(new_branch_target_result.stdout);
+        defer allocator.free(new_branch_target_result.stderr);
+        try expectExitCode(new_branch_target_result, 0);
+        try expectOutputContainsLine(new_branch_target_result.stdout, "origin/");
+
+        const remote_branch_target_result = try runCompletionScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_path,
+            stub_bin_dir,
+            "wt add origin/fe",
+            &completion_env,
+        );
+        defer allocator.free(remote_branch_target_result.stdout);
+        defer allocator.free(remote_branch_target_result.stderr);
+        try expectExitCode(remote_branch_target_result, 0);
+        try expectOutputContainsLine(remote_branch_target_result.stdout, "origin/feature/remote-one");
+        try expectOutputLacksLine(remote_branch_target_result.stdout, "upstream/");
 
         const root_flag_result = try runCompletionScenarioWithEnv(
             allocator,

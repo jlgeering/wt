@@ -267,6 +267,25 @@ fn emitZshInit() []const u8 {
     \\    fi
     \\}
     \\
+    \\__wt_complete_branch_targets() {
+    \\    local current_word="$1"
+    \\    local branch
+    \\    local -a branches
+    \\    typeset -A seen
+    \\    while IFS= read -r branch; do
+    \\        if [ -z "$branch" ]; then
+    \\            continue
+    \\        fi
+    \\        if [ -z "${seen[$branch]}" ]; then
+    \\            seen[$branch]=1
+    \\            branches+=("$branch")
+    \\        fi
+    \\    done < <(command wt __complete-branch-targets "$current_word" 2>/dev/null)
+    \\    if [ "${#branches[@]}" -gt 0 ]; then
+    \\        compadd -- "${branches[@]}"
+    \\    fi
+    \\}
+    \\
     \\__wt_complete_refs() {
     \\    local ref
     \\    local -a refs
@@ -330,7 +349,7 @@ fn emitZshInit() []const u8 {
     \\            if [[ "$words[CURRENT]" == -* ]]; then
     \\                __wt_complete_help_flags
     \\            elif [ "$CURRENT" -eq 3 ]; then
-    \\                __wt_complete_local_branches
+    \\                __wt_complete_branch_targets "$words[CURRENT]"
     \\            elif [ "$CURRENT" -eq 4 ]; then
     \\                __wt_complete_refs
     \\            fi
@@ -392,6 +411,10 @@ fn emitBashInit() []const u8 {
     \\    command wt __complete-local-branches 2>/dev/null
     \\}
     \\
+    \\__wt_complete_branch_targets() {
+    \\    command wt __complete-branch-targets "$1" 2>/dev/null
+    \\}
+    \\
     \\__wt_complete_refs() {
     \\    command wt __complete-refs 2>/dev/null
     \\}
@@ -435,7 +458,7 @@ fn emitBashInit() []const u8 {
     \\            done
     \\            if [ "$positional_count" -eq 0 ]; then
     \\                local branches
-    \\                branches=$(__wt_complete_local_branches)
+    \\                branches=$(__wt_complete_branch_targets "$cur")
     \\                COMPREPLY=($(compgen -W "$branches" -- "$cur"))
     \\                return 0
     \\            fi
@@ -507,6 +530,10 @@ fn emitFishInit() []const u8 {
     \\    command wt __complete-local-branches 2>/dev/null | sort -u
     \\end
     \\
+    \\function __wt_complete_branch_targets
+    \\    command wt __complete-branch-targets "$argv[1]" 2>/dev/null | sort -u
+    \\end
+    \\
     \\function __wt_complete_refs
     \\    command wt __complete-refs 2>/dev/null | sort -u
     \\end
@@ -529,7 +556,7 @@ fn emitFishInit() []const u8 {
     \\complete -c wt -n "__fish_seen_subcommand_from switch" -s h -l help -d "Show help"
     \\complete -c wt -n "__fish_seen_subcommand_from init" -s h -l help -d "Show help"
     \\complete -c wt -n "__fish_seen_subcommand_from shell-init" -s h -l help -d "Show help"
-    \\complete -f -c wt -n "__fish_seen_subcommand_from new add; and test (count (commandline -opc)) -eq 2" -a "(__wt_complete_local_branches)"
+    \\complete -f -c wt -n "__fish_seen_subcommand_from new add; and test (count (commandline -opc)) -eq 2" -a "(__wt_complete_branch_targets (commandline -ct))"
     \\complete -f -c wt -n "__fish_seen_subcommand_from new add; and test (count (commandline -opc)) -eq 3" -a "(__wt_complete_refs)"
     \\complete -f -c wt -n "__fish_seen_subcommand_from rm; and test (count (commandline -opc)) -eq 2" -a "(__wt_complete_worktree_branches)"
     \\complete -f -c wt -n "__fish_seen_subcommand_from switch; and test (count (commandline -opc)) -eq 2" -a "(__wt_complete_worktree_branches)"
@@ -687,6 +714,18 @@ fn emitNuInit() []const u8 {
     \\    | uniq
     \\}
     \\
+    \\def "__wt_complete_branch_targets" [current: string] {
+    \\    let refs = (^wt __complete-branch-targets $current err> /dev/null | complete)
+    \\    if $refs.exit_code != 0 {
+    \\        return []
+    \\    }
+    \\    $refs.stdout
+    \\    | lines
+    \\    | each {|it| $it | str trim}
+    \\    | where {|it| $it != ""}
+    \\    | uniq
+    \\}
+    \\
     \\def "__wt_complete_refs" [] {
     \\    let refs = (^wt __complete-refs err> /dev/null | complete)
     \\    if $refs.exit_code != 0 {
@@ -758,7 +797,7 @@ fn emitNuInit() []const u8 {
     \\            }
     \\            let positional = ($spans | skip 2 | where {|arg| not ($arg | str starts-with "-")})
     \\            if ($positional | length) <= 1 {
-    \\                return (__wt_complete_local_branches)
+    \\                return (__wt_complete_branch_targets $current)
     \\            }
     \\            if ($positional | length) == 2 {
     \\                return (__wt_complete_refs)
@@ -1006,6 +1045,7 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_rm_flags()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_picker_values()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_local_branches()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_branch_targets()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_refs()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_worktree_branches()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "_wt()") != null);
@@ -1023,12 +1063,13 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -- --help -h --force -f --picker --no-interactive") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -- auto builtin fzf") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __complete-local-branches 2>/dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __complete-branch-targets \"$current_word\" 2>/dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __complete-refs 2>/dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "while IFS= read -r branch; do") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "IFS=$'\\t'") == null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "if [ \"$CURRENT\" -eq 3 ]; then") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "elif [ \"$CURRENT\" -eq 4 ]; then") != null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_local_branches") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_branch_targets \"$words[CURRENT]\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "_arguments") == null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "${1#-}") != null);
@@ -1082,11 +1123,12 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "cd \"$target_dir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_worktree_branches()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_local_branches()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_branch_targets()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "__wt_complete_refs()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "command wt __complete-worktree-branches") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "_wt_bash_completion()") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "for ((i=2; i<COMP_CWORD; i++)); do") != null);
-    try std.testing.expect(std.mem.indexOf(u8, bash_init, "branches=$(__wt_complete_local_branches)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "branches=$(__wt_complete_branch_targets \"$cur\")") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "refs=$(__wt_complete_refs)") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"list ls new add rm switch init shell-init --help -h --version -V\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "list|ls)") != null);
@@ -1101,6 +1143,7 @@ test "bash init contains function definition" {
 
 test "fish init contains function definition and completion" {
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "function __wt_complete_local_branches") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "function __wt_complete_branch_targets") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "function __wt_complete_refs") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "function __wt_complete_worktree_branches") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -e -c wt") != null);
@@ -1115,7 +1158,7 @@ test "fish init contains function definition and completion" {
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"list\" -d \"List worktrees\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"ls\" -d \"Alias for list\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"add\" -d \"Alias for new\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_seen_subcommand_from new add; and test (count (commandline -opc)) -eq 2\" -a \"(__wt_complete_local_branches)\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_seen_subcommand_from new add; and test (count (commandline -opc)) -eq 2\" -a \"(__wt_complete_branch_targets (commandline -ct))\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_seen_subcommand_from shell-init; and test (count (commandline -opc)) -eq 2\" -a \"zsh bash fish nu nushell\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "function wt --wraps wt --description 'wt shell integration'") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "string match -qr '^-' -- \"$first\"") != null);
@@ -1146,6 +1189,8 @@ test "nu init contains wrapper and completion definitions" {
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "{ value: \"add\", description: \"Alias for new\" }") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_local_branches\" []") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __complete-local-branches err> /dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_branch_targets\" [current: string]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __complete-branch-targets $current err> /dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __complete-refs err> /dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_worktree_branches\" []") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __complete-worktree-branches err> /dev/null") != null);
