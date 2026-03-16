@@ -1,6 +1,7 @@
 const std = @import("std");
 const ui = @import("../lib/ui.zig");
 const cli_surface = @import("../lib/cli_surface.zig");
+const picker = @import("../lib/picker.zig");
 
 fn buildZshCommandChoices() []const u8 {
     comptime var out: []const u8 = "";
@@ -53,11 +54,31 @@ fn buildNuShellNameChoices() []const u8 {
     return out;
 }
 
+fn buildPickerChoices() []const u8 {
+    comptime var out: []const u8 = "";
+    inline for (std.meta.fields(picker.PickerMode), 0..) |field, idx| {
+        if (idx != 0) out = out ++ " ";
+        out = out ++ field.name;
+    }
+    return out;
+}
+
+fn buildNuPickerChoices() []const u8 {
+    comptime var out: []const u8 = "";
+    inline for (std.meta.fields(picker.PickerMode), 0..) |field, idx| {
+        if (idx != 0) out = out ++ " ";
+        out = out ++ "\"" ++ field.name ++ "\"";
+    }
+    return out;
+}
+
 const zsh_command_choices = buildZshCommandChoices();
 const shell_name_choices = buildShellNameChoices();
 const fish_command_completions = buildFishCommandCompletions();
 const nu_command_choices = buildNuCommandChoices();
 const nu_shell_name_choices = buildNuShellNameChoices();
+const picker_choices = buildPickerChoices();
+const nu_picker_choices = buildNuPickerChoices();
 
 // Shared behavior contract across all shell-init wrappers:
 // - `wt` with no args invokes `wt __pick-worktree` only in interactive sessions.
@@ -225,7 +246,7 @@ fn emitZshInit() []const u8 {
     \\}
     \\
     \\__wt_complete_picker_values() {
-    \\    compadd -- auto builtin fzf
+++ "    compadd -- " ++ picker_choices ++ "\n" ++
     \\}
     \\
     \\__wt_complete_local_branches() {
@@ -368,7 +389,6 @@ fn emitBashInit() []const u8 {
 ++ "wt() {\n" ++ posix_wrapper_body ++ "\n}\n" ++
     \\
     \\__wt_complete_worktree_branches() {
-    \\    local current branch _rest
     \\    command wt __complete-worktree-branches 2>/dev/null
     \\}
     \\
@@ -433,7 +453,7 @@ fn emitBashInit() []const u8 {
     \\            ;;
     \\        rm)
     \\            if [ "$prev" = "--picker" ]; then
-    \\                COMPREPLY=($(compgen -W "auto builtin fzf" -- "$cur"))
+++ "                COMPREPLY=($(compgen -W \"" ++ picker_choices ++ "\" -- \"$cur\"))\n" ++
     \\                return 0
     \\            fi
     \\            if [[ "$cur" == -* ]]; then
@@ -510,7 +530,7 @@ fn emitFishInit() []const u8 {
     \\complete -c wt -n "__fish_seen_subcommand_from rm" -s f -l force -d "Force removal"
     \\complete -c wt -n "__fish_seen_subcommand_from rm" -l picker -r -d "Picker backend"
     \\complete -c wt -n "__fish_seen_subcommand_from rm" -l no-interactive -d "Disable interactive picker"
-    \\complete -f -c wt -n "__fish_seen_subcommand_from rm; and __fish_prev_arg_in --picker" -a "auto builtin fzf"
+++ "complete -f -c wt -n \"__fish_seen_subcommand_from rm; and __fish_prev_arg_in --picker\" -a \"" ++ picker_choices ++ "\"\n" ++
     \\complete -c wt -n "__fish_seen_subcommand_from switch" -s h -l help -d "Show help"
     \\complete -c wt -n "__fish_seen_subcommand_from init" -s h -l help -d "Show help"
     \\complete -c wt -n "__fish_seen_subcommand_from shell-init" -s h -l help -d "Show help"
@@ -715,7 +735,7 @@ fn emitNuInit() []const u8 {
     \\}
     \\
     \\def "__wt_complete_picker_values" [] {
-    \\    ["auto" "builtin" "fzf"]
+++ "    [" ++ nu_picker_choices ++ "]\n" ++
     \\}
     \\
     \\def "nu-complete wt" [spans: list<string>] {
