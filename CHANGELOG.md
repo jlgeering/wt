@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-03-16
+
+### Added
+
+- Added `wt switch` and internal `wt __switch` so shells and scripts can jump directly to an existing branch worktree.
+- Added support for explicit remote-qualified branch creation in `wt new|add`, including upstream tracking and completion/test coverage for remote refs.
+
+### Fixed
+
+- Fixed remote-qualified `wt new|add` flows to report upstream-tracking setup failures more clearly and reject ambiguous branch/base combinations safely.
+
+### Changed
+
+- Updated CLI docs, shell integration guidance, and command contracts to cover `switch` behavior and remote-qualified branch workflows.
+
 ## [0.3.0] - 2026-02-28
 
 ### Added
@@ -70,6 +85,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Core worktree management commands: `list`, `new`, `rm`, and `init`.
 - Shell integration support via `wt shell-init` for `zsh`, `bash`, `fish`, and `nu`.
 
+[0.4.0]: https://github.com/jlgeering/wt/releases/tag/v0.4.0
 [0.3.0]: https://github.com/jlgeering/wt/releases/tag/v0.3.0
 [0.2.1]: https://github.com/jlgeering/wt/releases/tag/v0.2.1
 [0.2.0]: https://github.com/jlgeering/wt/releases/tag/v0.2.0
