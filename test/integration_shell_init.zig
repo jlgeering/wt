@@ -75,6 +75,21 @@ const stub_wt_script =
     \\      exit "$WT_STUB_SWITCH_EXIT"
     \\    fi
     \\    ;;
+    \\  __complete-local-branches)
+    \\    if [ -n "${WT_STUB_COMPLETE_LOCAL_BRANCHES:-}" ]; then
+    \\      printf '%s\n' "$WT_STUB_COMPLETE_LOCAL_BRANCHES"
+    \\    fi
+    \\    ;;
+    \\  __complete-refs)
+    \\    if [ -n "${WT_STUB_COMPLETE_REFS:-}" ]; then
+    \\      printf '%s\n' "$WT_STUB_COMPLETE_REFS"
+    \\    fi
+    \\    ;;
+    \\  __complete-worktree-branches)
+    \\    if [ -n "${WT_STUB_COMPLETE_WORKTREE_BRANCHES:-}" ]; then
+    \\      printf '%s\n' "$WT_STUB_COMPLETE_WORKTREE_BRANCHES"
+    \\    fi
+    \\    ;;
     \\  *)
     \\    if [ -n "${WT_STUB_DEFAULT_STDERR:-}" ]; then
     \\      printf '%s\n' "$WT_STUB_DEFAULT_STDERR" >&2
@@ -413,6 +428,99 @@ fn buildInvocationStatusProgram(
         "{s}source \"{s}\"\nwt {s}\nwt_status=$?\nprintf 'WT_STATUS=%s\\n' \"$wt_status\"\nprintf 'PWD=%s\\n' \"$PWD\"\n",
         .{ prefix, init_script_path, invocation },
     );
+}
+
+fn buildCompletionProgram(
+    allocator: std.mem.Allocator,
+    shell: ShellRuntime,
+    init_script_path: []const u8,
+    query: []const u8,
+) ![]u8 {
+    if (std.mem.eql(u8, shell.name, "zsh")) {
+        return std.fmt.allocPrint(
+            allocator,
+            "autoload -Uz compinit\ncompinit\nsource \"{s}\"\ncompadd() {{ shift; print -rl -- \"$@\"; }}\n_describe() {{ shift 2; print -rl -- \"$@\"; }}\nwords=({s})\nCURRENT=$#words\n_wt\n",
+            .{ init_script_path, query },
+        );
+    }
+
+    if (std.mem.eql(u8, shell.name, "bash")) {
+        return std.fmt.allocPrint(
+            allocator,
+            "source \"{s}\"\nCOMP_WORDS=({s})\nCOMP_CWORD=$((${{#COMP_WORDS[@]}} - 1))\n_wt_bash_completion\nprintf '%s\\n' \"${{COMPREPLY[@]}}\"\n",
+            .{ init_script_path, query },
+        );
+    }
+
+    if (std.mem.eql(u8, shell.name, "fish")) {
+        return std.fmt.allocPrint(
+            allocator,
+            "source \"{s}\"\ncomplete -C \"{s}\"\n",
+            .{ init_script_path, query },
+        );
+    }
+
+    return std.fmt.allocPrint(
+        allocator,
+        "source \"{s}\"\nnu-complete wt [{s}] | each {{|it| if (($it | describe) =~ 'record') {{ $it.value }} else {{ $it }} }} | to text\n",
+        .{ init_script_path, query },
+    );
+}
+
+fn runCompletionScenarioWithEnv(
+    allocator: std.mem.Allocator,
+    shell: ShellRuntime,
+    init_script_path: []const u8,
+    cwd: []const u8,
+    stub_bin_dir: []const u8,
+    query: []const u8,
+    env_overrides: []const EnvOverride,
+) !std.process.Child.RunResult {
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+
+    const existing_path = env_map.get("PATH") orelse "";
+    const full_path = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ stub_bin_dir, existing_path });
+    defer allocator.free(full_path);
+
+    try env_map.put("PATH", full_path);
+    for (env_overrides) |entry| {
+        try env_map.put(entry.key, entry.value);
+    }
+
+    const shell_program = try buildCompletionProgram(allocator, shell, init_script_path, query);
+    defer allocator.free(shell_program);
+
+    return std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ shell.bin, "-c", shell_program },
+        .cwd = cwd,
+        .env_map = &env_map,
+        .max_output_bytes = 1024 * 1024,
+    });
+}
+
+fn expectOutputContainsLine(output: []const u8, expected: []const u8) !void {
+    var lines = std.mem.splitScalar(u8, output, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        var parts = std.mem.splitScalar(u8, trimmed, '\t');
+        const candidate = parts.first();
+        if (std.mem.eql(u8, candidate, expected)) return;
+    }
+    return error.ExpectedLineMissing;
+}
+
+fn expectOutputLacksLine(output: []const u8, unexpected: []const u8) !void {
+    var lines = std.mem.splitScalar(u8, output, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        var parts = std.mem.splitScalar(u8, trimmed, '\t');
+        const candidate = parts.first();
+        if (std.mem.eql(u8, candidate, unexpected)) {
+            return error.UnexpectedLinePresent;
+        }
+    }
 }
 
 fn runStatusShellScenarioWithEnv(
@@ -1509,4 +1617,150 @@ test "integration: nushell non-interactive bare wt passthrough preserves LAST_EX
     const log_data = try helpers.readFileAlloc(allocator, log_path);
     defer allocator.free(log_data);
     try std.testing.expect(std.mem.indexOf(u8, log_data, "__pick-worktree") == null);
+}
+
+test "integration: shell completion parity covers partial branches flags and aliases" {
+    const allocator = std.testing.allocator;
+
+    const temp_root = try helpers.createTempDir(allocator);
+    defer {
+        helpers.cleanupPath(allocator, temp_root);
+        allocator.free(temp_root);
+    }
+
+    const stub_bin_dir = try std.fs.path.join(allocator, &.{ temp_root, "bin" });
+    defer allocator.free(stub_bin_dir);
+    try std.fs.cwd().makePath(stub_bin_dir);
+
+    const stub_wt_path = try std.fs.path.join(allocator, &.{ stub_bin_dir, "wt" });
+    defer allocator.free(stub_wt_path);
+    try helpers.writeFile(stub_wt_path, stub_wt_script);
+    {
+        const chmod_stdout = try helpers.runChecked(allocator, null, &.{ "chmod", "+x", stub_wt_path });
+        allocator.free(chmod_stdout);
+    }
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const completion_env = [_]EnvOverride{
+        .{ .key = "WT_STUB_COMPLETE_WORKTREE_BRANCHES", .value = "somename\nsomething-else" },
+        .{ .key = "WT_STUB_COMPLETE_LOCAL_BRANCHES", .value = "feature-a\nfeature-b" },
+        .{ .key = "WT_STUB_COMPLETE_REFS", .value = "origin/main\nupstream/topic" },
+    };
+
+    var ran_any_shell = false;
+
+    for (runtime_shells) |shell| {
+        if (!shellExists(allocator, shell.bin)) {
+            std.debug.print("SKIP {s} completion parity test: shell not installed\n", .{shell.name});
+            continue;
+        }
+
+        ran_any_shell = true;
+
+        const init_script = try requireScript(shell.name);
+        const init_script_name = try std.fmt.allocPrint(allocator, "{s}.completion.init", .{shell.name});
+        defer allocator.free(init_script_name);
+        const init_script_path = try std.fs.path.join(allocator, &.{ temp_root, init_script_name });
+        defer allocator.free(init_script_path);
+        try helpers.writeFile(init_script_path, init_script);
+
+        const switch_result = try runCompletionScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_path,
+            stub_bin_dir,
+            "wt switch somen",
+            &completion_env,
+        );
+        defer allocator.free(switch_result.stdout);
+        defer allocator.free(switch_result.stderr);
+        try expectExitCode(switch_result, 0);
+        try expectOutputContainsLine(switch_result.stdout, "somename");
+
+        const rm_result = try runCompletionScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_path,
+            stub_bin_dir,
+            "wt rm somen",
+            &completion_env,
+        );
+        defer allocator.free(rm_result.stdout);
+        defer allocator.free(rm_result.stderr);
+        try expectExitCode(rm_result, 0);
+        try expectOutputContainsLine(rm_result.stdout, "somename");
+
+        const root_flag_result = try runCompletionScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_path,
+            stub_bin_dir,
+            "wt --v",
+            &completion_env,
+        );
+        defer allocator.free(root_flag_result.stdout);
+        defer allocator.free(root_flag_result.stderr);
+        try expectExitCode(root_flag_result, 0);
+        try expectOutputContainsLine(root_flag_result.stdout, "--version");
+
+        const rm_flag_result = try runCompletionScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_path,
+            stub_bin_dir,
+            "wt rm --",
+            &completion_env,
+        );
+        defer allocator.free(rm_flag_result.stdout);
+        defer allocator.free(rm_flag_result.stderr);
+        try expectExitCode(rm_flag_result, 0);
+        try expectOutputContainsLine(rm_flag_result.stdout, "--picker");
+        try expectOutputContainsLine(rm_flag_result.stdout, "--force");
+
+        const picker_value_result = try runCompletionScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_path,
+            stub_bin_dir,
+            "wt rm --picker b",
+            &completion_env,
+        );
+        defer allocator.free(picker_value_result.stdout);
+        defer allocator.free(picker_value_result.stderr);
+        try expectExitCode(picker_value_result, 0);
+        if (!std.mem.eql(u8, shell.name, "fish")) {
+            try expectOutputContainsLine(picker_value_result.stdout, "builtin");
+        }
+        if (std.mem.eql(u8, shell.name, "bash")) {
+            try expectOutputLacksLine(picker_value_result.stdout, "auto");
+        }
+
+        const alias_result = try runCompletionScenarioWithEnv(
+            allocator,
+            shell,
+            init_script_path,
+            repo_path,
+            stub_bin_dir,
+            "wt ls --",
+            &completion_env,
+        );
+        defer allocator.free(alias_result.stdout);
+        defer allocator.free(alias_result.stderr);
+        try expectExitCode(alias_result, 0);
+        try expectOutputContainsLine(alias_result.stdout, "--help");
+    }
+
+    if (!ran_any_shell) {
+        std.debug.print("SKIP completion parity test: zsh/bash/fish/nu not installed\n", .{});
+    }
 }
