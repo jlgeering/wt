@@ -31,7 +31,7 @@ wt __switch <branch>
 wt __pick-worktree
 wt __complete-local-branches
 wt __complete-refs
-wt __complete-rm-branches
+wt __complete-worktree-branches
 ```
 
 ## Completion via shell-init
@@ -41,7 +41,7 @@ When users load `wt shell-init bash` (via `eval`), `wt` registers Bash completio
 When users load `wt shell-init zsh` (via `eval`), `wt shell-init fish` (via `source`), or `wt shell-init nu` (via `source`), `wt` registers completion for:
 
 - subcommands (`list`, `ls`, `new`, `add`, `rm`, `switch`, `init`, `shell-init`)
-- positional arguments for `new|add`, `rm`, and `shell-init`
+- positional arguments for `new|add`, `rm`, `switch`, and `shell-init`
 
 zsh/fish/nu completion intentionally does not suggest flags.
 
@@ -83,8 +83,11 @@ Error cases:
 
 ## `wt switch` output contracts
 
-- Public command `wt switch <branch>` (human): prints the worktree path to stdout on success; error to stderr and non-zero exit if no worktree found for branch.
-- Internal command `wt __switch <branch>` (machine): suppresses error messages; exits with non-zero code if branch not found. Prints worktree path to stdout on success. Used by shell wrapper.
+- Public command `wt switch <branch>` (human): prints the matching worktree path to stdout on success; prints an error to stderr and exits non-zero when no matching worktree exists.
+- Internal command `wt __switch <branch>` (machine): prints the matching worktree path to stdout on success; suppresses error messages and exits non-zero when no matching worktree exists. Used by shell wrappers.
+- `wt switch` intentionally prints the path in human mode, unlike `wt new`, because lookup has no side effects to narrate and the stdout path enables direct composition such as `cd $(wt switch foo)`.
+- Detached-HEAD worktrees never satisfy `wt switch <branch>` because lookup only matches named branch checkouts.
+- "No worktree found" means no existing worktree reports the requested branch in `git worktree list --porcelain`; `wt switch` does not create a worktree as fallback.
 
 ## `wt list` output contracts
 

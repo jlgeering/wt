@@ -22,6 +22,7 @@ When loaded via `wt shell-init zsh`, `wt` also registers zsh completion for:
 - positionals:
   - `wt new|add <branch> [base]`: git refs
   - `wt rm [branch]`: branch names from `wt __list` (excluding current worktree branch)
+  - `wt switch <branch>`: branch names from `wt __list` (excluding current worktree branch)
   - `wt shell-init <shell>`: `zsh`, `bash`, `fish`, `nu`, `nushell`
 
 Completion intentionally does not suggest flags.
@@ -64,6 +65,7 @@ When loaded via `wt shell-init fish`, `wt` also registers fish completion for:
 - positionals:
   - `wt new|add <branch> [base]`: git refs
   - `wt rm [branch]`: branch names from `wt __list` (excluding current worktree branch)
+  - `wt switch <branch>`: branch names from `wt __list` (excluding current worktree branch)
   - `wt shell-init <shell>`: `zsh`, `bash`, `fish`, `nu`, `nushell`
 
 Completion intentionally does not suggest flags.
@@ -82,7 +84,7 @@ if (which wt | is-not-empty) {
 The `nu` integration provides:
 
 - the same interactive no-arg picker and `new|add` auto-`cd` behavior as zsh/bash.
-- completion for subcommands and key positionals (`new|add`, `rm`, `shell-init`).
+- completion for subcommands and key positionals (`new|add`, `rm`, `switch`, `shell-init`).
 - shell aliases accepted by `shell-init`: `zsh`, `bash`, `fish`, `nu` (`nushell` is also accepted).
 - interactive no-arg picker stderr handling that prefers `err> /dev/tty`, with fallback to captured stderr if that redirection fails.
 
@@ -109,6 +111,14 @@ The `nu` integration provides:
   - it prefers `cd "$output/<relative-subdir>"` when that path exists.
   - if the subdirectory is missing in the new worktree, it prints a note and falls back to `cd "$output"`.
 - After changing directories, it prints the same summary block (`Entered worktree` and optional `Subdirectory`).
+- The wrapper also intercepts `wt switch <branch>`.
+- It calls `wt __switch <branch>` and captures stdout (the target worktree path).
+- Before switching, it captures the current repo-relative subdirectory via `git rev-parse --show-prefix`.
+- If `wt switch` exits successfully and the output is an existing directory:
+  - it prefers `cd "$output/<relative-subdir>"` when that path exists.
+  - if the subdirectory is missing in the target worktree, it prints a note and falls back to `cd "$output"`.
+- If `wt __switch` exits non-zero or prints no usable directory, the wrapper preserves the current working directory and propagates the exit status.
+- `wt switch --help` and non-standard switch invocations pass through to the real binary unchanged.
 - All other subcommands are passed through unchanged to the `wt` binary (`command wt` in zsh/bash, `command wt` in fish, `^wt` in nushell).
 
 ## Notes
