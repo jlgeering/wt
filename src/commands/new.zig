@@ -328,3 +328,39 @@ test "parseBranchTarget treats configured remote prefix as remote-qualified inpu
         },
     }
 }
+
+test "parseBranchTarget keeps empty branch argument local" {
+    const target = parseBranchTarget("", "origin\nupstream\n");
+
+    switch (target) {
+        .local => |branch| try std.testing.expectEqualStrings("", branch),
+        .remote => return error.UnexpectedRemoteTarget,
+    }
+}
+
+test "parseBranchTarget keeps leading-slash input local" {
+    const target = parseBranchTarget("/foo", "origin\nupstream\n");
+
+    switch (target) {
+        .local => |branch| try std.testing.expectEqualStrings("/foo", branch),
+        .remote => return error.UnexpectedRemoteTarget,
+    }
+}
+
+test "parseBranchTarget keeps trailing-slash input local" {
+    const target = parseBranchTarget("foo/", "origin\nupstream\n");
+
+    switch (target) {
+        .local => |branch| try std.testing.expectEqualStrings("foo/", branch),
+        .remote => return error.UnexpectedRemoteTarget,
+    }
+}
+
+test "parseBranchTarget keeps slash branch local when remotes output is empty" {
+    const target = parseBranchTarget("origin/feature/foo", "");
+
+    switch (target) {
+        .local => |branch| try std.testing.expectEqualStrings("origin/feature/foo", branch),
+        .remote => return error.UnexpectedRemoteTarget,
+    }
+}
