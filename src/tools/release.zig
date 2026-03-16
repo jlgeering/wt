@@ -249,15 +249,13 @@ fn validateRelease(allocator: Allocator, version: []const u8) !void {
         return fail("local main is behind github/main; pull or rebase first", .{});
     }
 
-    const local_tag_ref = try std.fmt.allocPrint(allocator, "refs/tags/{s}", .{tag});
-    defer allocator.free(local_tag_ref);
-    if ((try runExitCode(allocator, repo_root, &.{ "git", "rev-parse", "-q", "--verify", local_tag_ref })) == 0) {
+    const tag_ref = try std.fmt.allocPrint(allocator, "refs/tags/{s}", .{tag});
+    defer allocator.free(tag_ref);
+    if ((try runExitCode(allocator, repo_root, &.{ "git", "rev-parse", "-q", "--verify", tag_ref })) == 0) {
         return fail("local tag already exists: {s}", .{tag});
     }
 
-    const remote_tag_ref = try std.fmt.allocPrint(allocator, "refs/tags/{s}", .{tag});
-    defer allocator.free(remote_tag_ref);
-    if ((try runExitCode(allocator, repo_root, &.{ "git", "ls-remote", "--exit-code", "--tags", "github", remote_tag_ref })) == 0) {
+    if ((try runExitCode(allocator, repo_root, &.{ "git", "ls-remote", "--exit-code", "--tags", "github", tag_ref })) == 0) {
         return fail("remote tag already exists: {s}", .{tag});
     }
 

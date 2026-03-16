@@ -191,17 +191,9 @@ fn writeMachineRow(stdout: anytype, row: WorktreeRow) !void {
 }
 
 fn resolveCurrentWorktreeRoot(allocator: std.mem.Allocator, cwd: []const u8) ![]u8 {
-    const top_level_output = git.runGit(allocator, cwd, &.{ "rev-parse", "--show-toplevel" }) catch {
+    return git.repoRoot(allocator, cwd) catch {
         return try allocator.dupe(u8, cwd);
     };
-    defer allocator.free(top_level_output);
-
-    const top_level = std.mem.trim(u8, top_level_output, " \t\r\n");
-    if (top_level.len == 0) {
-        return try allocator.dupe(u8, cwd);
-    }
-
-    return try allocator.dupe(u8, top_level);
 }
 
 fn inspectWorktree(
@@ -252,30 +244,13 @@ fn inspectWorktree(
             if (std.mem.eql(u8, branch, base)) {
                 base_divergence.available = true;
             } else {
-                var base_ok = true;
-                var ahead: usize = 0;
-                var behind: usize = 0;
-
-                const ahead_result = git.countUnmergedCommits(allocator, wt.path, base, branch);
-                if (ahead_result) |count| {
-                    ahead = count;
-                } else |_| {
-                    base_ok = false;
-                }
-
-                const behind_result = git.countUnmergedCommits(allocator, wt.path, branch, base);
-                if (behind_result) |count| {
-                    behind = count;
-                } else |_| {
-                    base_ok = false;
-                }
-
-                if (base_ok) {
+                const lr = git.countLeftRight(allocator, wt.path, base, branch) catch null;
+                if (lr) |counts| {
                     base_divergence = .{
                         .known = true,
                         .available = true,
-                        .ahead = ahead,
-                        .behind = behind,
+                        .ahead = counts.right,
+                        .behind = counts.left,
                     };
                 } else {
                     base_divergence = .{

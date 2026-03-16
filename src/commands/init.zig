@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const git = @import("../lib/git.zig");
 const config = @import("../lib/config.zig");
+const input = @import("../lib/input.zig");
 const init_planner = @import("../lib/init_planner.zig");
 const ui = @import("../lib/ui.zig");
 
@@ -27,49 +28,15 @@ const ansi_bold = ui.ansi.bold;
 const ansi_green = ui.ansi.green;
 const ansi_yellow = ui.ansi.yellow;
 const ansi_red = ui.ansi.red;
-const esc_key: u8 = 0x1b;
-const ctrl_c_key: u8 = 0x03;
 
-fn isConfirmedResponse(input: []const u8) bool {
-    const trimmed = std.mem.trim(u8, input, " \t\r\n");
-    return std.ascii.eqlIgnoreCase(trimmed, "y") or std.ascii.eqlIgnoreCase(trimmed, "yes");
-}
-
-fn isNegativeResponse(input: []const u8) bool {
-    const trimmed = std.mem.trim(u8, input, " \t\r\n");
+fn isNegativeResponse(text: []const u8) bool {
+    const trimmed = std.mem.trim(u8, text, " \t\r\n");
     return std.ascii.eqlIgnoreCase(trimmed, "n") or std.ascii.eqlIgnoreCase(trimmed, "no");
-}
-
-fn isCancelKey(key: u8) bool {
-    return key == esc_key or key == ctrl_c_key;
 }
 
 // Keep one blank line between interactive "screens" so transitions are easier to scan.
 fn printScreenBreak(stdout: anytype) !void {
     try stdout.writeAll("\n");
-}
-
-fn tryReadSingleKey(stdin_file: std.fs.File) !?u8 {
-    if (comptime builtin.target.os.tag == .windows) {
-        return null;
-    } else {
-        if (!stdin_file.isTty()) return null;
-
-        const original_termios = std.posix.tcgetattr(stdin_file.handle) catch return null;
-        var raw_termios = original_termios;
-        raw_termios.lflag.ICANON = false;
-        raw_termios.lflag.ECHO = false;
-        raw_termios.lflag.ISIG = false;
-        raw_termios.cc[@intFromEnum(std.c.V.MIN)] = 1;
-        raw_termios.cc[@intFromEnum(std.c.V.TIME)] = 0;
-        std.posix.tcsetattr(stdin_file.handle, .NOW, raw_termios) catch return null;
-        defer std.posix.tcsetattr(stdin_file.handle, .NOW, original_termios) catch {};
-
-        var buf: [1]u8 = undefined;
-        const read_len = std.posix.read(stdin_file.handle, &buf) catch return null;
-        if (read_len == 0) return null;
-        return buf[0];
-    }
 }
 
 fn promptYesNo(
@@ -83,7 +50,7 @@ fn promptYesNo(
     while (true) {
         try stdout.print("{s}{s}", .{ question, suffix });
 
-        if (try tryReadSingleKey(stdin_file)) |key_raw| {
+        if (try input.tryReadSingleKey(stdin_file)) |key_raw| {
             if (yesNoDecisionFromSingleKey(key_raw, default_yes)) |decision| {
                 const key = std.ascii.toLower(key_raw);
                 switch (decision) {
@@ -131,16 +98,16 @@ fn yesNoDecisionFromSingleKey(key_raw: u8, default_yes: bool) ?YesNoDecision {
     if (key == '\r' or key == '\n') return if (default_yes) .yes else .no;
     if (key == 'y') return .yes;
     if (key == 'n') return .no;
-    if (isCancelKey(key_raw)) return .cancel;
+    if (input.isCancelKey(key_raw)) return .cancel;
     return null;
 }
 
-fn yesNoDecisionFromLineInput(input: []const u8, default_yes: bool) ?YesNoDecision {
-    const trimmed = std.mem.trim(u8, input, " \t\r\n");
+fn yesNoDecisionFromLineInput(text: []const u8, default_yes: bool) ?YesNoDecision {
+    const trimmed = std.mem.trim(u8, text, " \t\r\n");
     if (trimmed.len == 0) return if (default_yes) .yes else .no;
-    if (isConfirmedResponse(trimmed)) return .yes;
+    if (input.isConfirmedResponse(trimmed)) return .yes;
     if (isNegativeResponse(trimmed)) return .no;
-    if (trimmed.len == 1 and isCancelKey(trimmed[0])) return .cancel;
+    if (trimmed.len == 1 and input.isCancelKey(trimmed[0])) return .cancel;
     return null;
 }
 
@@ -149,16 +116,16 @@ fn applyDecisionFromSingleKey(key_raw: u8) ?ApplyDecision {
     if (key == '\r' or key == '\n') return .apply_all;
     if (key == 'y') return .apply_all;
     if (key == 'n') return .decline;
-    if (isCancelKey(key_raw)) return .quit;
+    if (input.isCancelKey(key_raw)) return .quit;
     return null;
 }
 
-fn applyDecisionFromLineInput(input: []const u8) ?ApplyDecision {
-    const trimmed = std.mem.trim(u8, input, " \t\r\n");
+fn applyDecisionFromLineInput(text: []const u8) ?ApplyDecision {
+    const trimmed = std.mem.trim(u8, text, " \t\r\n");
     if (trimmed.len == 0) return .apply_all;
-    if (isConfirmedResponse(trimmed)) return .apply_all;
+    if (input.isConfirmedResponse(trimmed)) return .apply_all;
     if (isNegativeResponse(trimmed)) return .decline;
-    if (trimmed.len == 1 and isCancelKey(trimmed[0])) return .quit;
+    if (trimmed.len == 1 and input.isCancelKey(trimmed[0])) return .quit;
     return null;
 }
 
@@ -167,16 +134,16 @@ fn declineDecisionFromSingleKey(key_raw: u8) ?DeclineDecision {
     if (key == '\r' or key == '\n') return .review;
     if (key == 'e' or key == 'r') return .review;
     if (key == 'q' or key == 'n') return .quit;
-    if (isCancelKey(key_raw)) return .quit;
+    if (input.isCancelKey(key_raw)) return .quit;
     return null;
 }
 
-fn declineDecisionFromLineInput(input: []const u8) ?DeclineDecision {
-    const trimmed = std.mem.trim(u8, input, " \t\r\n");
+fn declineDecisionFromLineInput(text: []const u8) ?DeclineDecision {
+    const trimmed = std.mem.trim(u8, text, " \t\r\n");
     if (trimmed.len == 0) return .review;
     if (std.ascii.eqlIgnoreCase(trimmed, "e") or std.ascii.eqlIgnoreCase(trimmed, "edit") or std.ascii.eqlIgnoreCase(trimmed, "r") or std.ascii.eqlIgnoreCase(trimmed, "review")) return .review;
     if (std.ascii.eqlIgnoreCase(trimmed, "q") or std.ascii.eqlIgnoreCase(trimmed, "quit") or std.ascii.eqlIgnoreCase(trimmed, "n") or std.ascii.eqlIgnoreCase(trimmed, "no")) return .quit;
-    if (trimmed.len == 1 and isCancelKey(trimmed[0])) return .quit;
+    if (trimmed.len == 1 and input.isCancelKey(trimmed[0])) return .quit;
     return null;
 }
 
@@ -184,7 +151,7 @@ fn promptApplyDecision(stdout: anytype, stdin_file: std.fs.File) !ApplyDecision 
     while (true) {
         try stdout.writeAll("Apply changes? [Y/n]: ");
 
-        if (try tryReadSingleKey(stdin_file)) |key_raw| {
+        if (try input.tryReadSingleKey(stdin_file)) |key_raw| {
             if (applyDecisionFromSingleKey(key_raw)) |decision| {
                 const key = std.ascii.toLower(key_raw);
                 if (key == 'y') {
@@ -219,7 +186,7 @@ fn promptDeclineDecision(stdout: anytype, stdin_file: std.fs.File) !DeclineDecis
         try stdout.writeAll("  [q] Quit without writing\n");
         try stdout.writeAll("Choice [e/q]: ");
 
-        if (try tryReadSingleKey(stdin_file)) |key_raw| {
+        if (try input.tryReadSingleKey(stdin_file)) |key_raw| {
             if (declineDecisionFromSingleKey(key_raw)) |decision| {
                 const key = std.ascii.toLower(key_raw);
                 if (key == 'e' or key == 'r') {
@@ -320,15 +287,7 @@ fn printChangesSummary(
 }
 
 fn getRepoRoot(allocator: std.mem.Allocator) ![]u8 {
-    const root_output = git.runGit(allocator, null, &.{ "rev-parse", "--show-toplevel" }) catch {
-        return error.NotGitRepository;
-    };
-    defer allocator.free(root_output);
-
-    const trimmed = std.mem.trim(u8, root_output, " \t\r\n");
-    if (trimmed.len == 0) return error.NotGitRepository;
-
-    return allocator.dupe(u8, trimmed);
+    return git.repoRoot(allocator, null) catch error.NotGitRepository;
 }
 
 fn writeFile(path: []const u8, content: []const u8) !void {
@@ -491,37 +450,37 @@ pub fn run(allocator: std.mem.Allocator) !void {
 }
 
 test "apply decision supports escape and ctrl-c cancel" {
-    try std.testing.expectEqual(@as(?ApplyDecision, .quit), applyDecisionFromSingleKey(esc_key));
-    try std.testing.expectEqual(@as(?ApplyDecision, .quit), applyDecisionFromSingleKey(ctrl_c_key));
+    try std.testing.expectEqual(@as(?ApplyDecision, .quit), applyDecisionFromSingleKey(input.esc_key));
+    try std.testing.expectEqual(@as(?ApplyDecision, .quit), applyDecisionFromSingleKey(input.ctrl_c_key));
     try std.testing.expectEqual(@as(?ApplyDecision, .apply_all), applyDecisionFromSingleKey('y'));
     try std.testing.expectEqual(@as(?ApplyDecision, .decline), applyDecisionFromSingleKey('n'));
 }
 
 test "apply decision line input supports escaped cancel" {
-    const esc_text = [_]u8{esc_key};
-    const ctrl_c_text = [_]u8{ctrl_c_key};
+    const esc_text = [_]u8{input.esc_key};
+    const ctrl_c_text = [_]u8{input.ctrl_c_key};
     try std.testing.expectEqual(@as(?ApplyDecision, .quit), applyDecisionFromLineInput(&esc_text));
     try std.testing.expectEqual(@as(?ApplyDecision, .quit), applyDecisionFromLineInput(&ctrl_c_text));
     try std.testing.expectEqual(@as(?ApplyDecision, .apply_all), applyDecisionFromLineInput(""));
 }
 
 test "decline decision supports escape and ctrl-c cancel" {
-    try std.testing.expectEqual(@as(?DeclineDecision, .quit), declineDecisionFromSingleKey(esc_key));
-    try std.testing.expectEqual(@as(?DeclineDecision, .quit), declineDecisionFromSingleKey(ctrl_c_key));
+    try std.testing.expectEqual(@as(?DeclineDecision, .quit), declineDecisionFromSingleKey(input.esc_key));
+    try std.testing.expectEqual(@as(?DeclineDecision, .quit), declineDecisionFromSingleKey(input.ctrl_c_key));
     try std.testing.expectEqual(@as(?DeclineDecision, .review), declineDecisionFromSingleKey('e'));
 }
 
 test "decline decision line input supports escaped cancel" {
-    const esc_text = [_]u8{esc_key};
-    const ctrl_c_text = [_]u8{ctrl_c_key};
+    const esc_text = [_]u8{input.esc_key};
+    const ctrl_c_text = [_]u8{input.ctrl_c_key};
     try std.testing.expectEqual(@as(?DeclineDecision, .quit), declineDecisionFromLineInput(&esc_text));
     try std.testing.expectEqual(@as(?DeclineDecision, .quit), declineDecisionFromLineInput(&ctrl_c_text));
     try std.testing.expectEqual(@as(?DeclineDecision, .review), declineDecisionFromLineInput(""));
 }
 
 test "yes/no decision supports escape and ctrl-c cancel" {
-    try std.testing.expectEqual(@as(?YesNoDecision, .cancel), yesNoDecisionFromSingleKey(esc_key, true));
-    try std.testing.expectEqual(@as(?YesNoDecision, .cancel), yesNoDecisionFromSingleKey(ctrl_c_key, true));
+    try std.testing.expectEqual(@as(?YesNoDecision, .cancel), yesNoDecisionFromSingleKey(input.esc_key, true));
+    try std.testing.expectEqual(@as(?YesNoDecision, .cancel), yesNoDecisionFromSingleKey(input.ctrl_c_key, true));
     try std.testing.expectEqual(@as(?YesNoDecision, .yes), yesNoDecisionFromSingleKey('\n', true));
     try std.testing.expectEqual(@as(?YesNoDecision, .no), yesNoDecisionFromSingleKey('\n', false));
     try std.testing.expectEqual(@as(?YesNoDecision, .yes), yesNoDecisionFromSingleKey('y', true));
@@ -529,8 +488,8 @@ test "yes/no decision supports escape and ctrl-c cancel" {
 }
 
 test "yes/no line input supports escaped cancel" {
-    const esc_text = [_]u8{esc_key};
-    const ctrl_c_text = [_]u8{ctrl_c_key};
+    const esc_text = [_]u8{input.esc_key};
+    const ctrl_c_text = [_]u8{input.ctrl_c_key};
     try std.testing.expectEqual(@as(?YesNoDecision, .cancel), yesNoDecisionFromLineInput(&esc_text, true));
     try std.testing.expectEqual(@as(?YesNoDecision, .cancel), yesNoDecisionFromLineInput(&ctrl_c_text, true));
     try std.testing.expectEqual(@as(?YesNoDecision, .yes), yesNoDecisionFromLineInput("", true));

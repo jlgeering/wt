@@ -76,12 +76,8 @@ pub fn runWorktreeBranches(allocator: std.mem.Allocator) !void {
 
     var current_root: ?[]u8 = null;
     defer if (current_root) |path| allocator.free(path);
-    if (git.runGit(allocator, null, &.{ "rev-parse", "--show-toplevel" })) |output| {
-        defer allocator.free(output);
-        const trimmed = std.mem.trim(u8, output, " \t\r\n");
-        if (trimmed.len > 0) {
-            current_root = try allocator.dupe(u8, trimmed);
-        }
+    if (git.repoRoot(allocator, null)) |root| {
+        current_root = root;
     } else |_| {}
 
     const stdout = std.fs.File.stdout().deprecatedWriter();

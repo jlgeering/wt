@@ -1,14 +1,13 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const git = @import("../lib/git.zig");
+const input = @import("../lib/input.zig");
+const picker = @import("../lib/picker.zig");
 const picker_format = @import("../lib/picker_format.zig");
 const ui = @import("../lib/ui.zig");
 
-pub const PickerMode = enum {
-    auto,
-    builtin,
-    fzf,
-};
+pub const PickerMode = picker.PickerMode;
+pub const parsePickerMode = picker.parsePickerMode;
 
 pub const RmOptions = struct {
     branch_arg: ?[]const u8 = null,
@@ -31,18 +30,6 @@ const BranchDeleteAction = enum {
     skip_detached,
 };
 
-const esc_key: u8 = 0x1b;
-const ctrl_c_key: u8 = 0x03;
-
-const CommandDetector = *const fn (std.mem.Allocator, []const u8) bool;
-
-pub fn parsePickerMode(raw: []const u8) !PickerMode {
-    const value = std.mem.trim(u8, raw, " \t\r\n");
-    if (std.ascii.eqlIgnoreCase(value, "auto")) return .auto;
-    if (std.ascii.eqlIgnoreCase(value, "builtin")) return .builtin;
-    if (std.ascii.eqlIgnoreCase(value, "fzf")) return .fzf;
-    return error.InvalidPickerMode;
-}
 fn findWorktreeByBranch(worktrees: []const git.WorktreeInfo, branch: []const u8) ?git.WorktreeInfo {
     for (worktrees, 0..) |wt, idx| {
         // Never target the main worktree.
@@ -60,12 +47,7 @@ const SecondarySplit = struct {
 };
 
 fn detectCurrentWorktreePath(allocator: std.mem.Allocator) ![]u8 {
-    const output = try git.runGit(allocator, null, &.{ "rev-parse", "--show-toplevel" });
-    defer allocator.free(output);
-
-    const trimmed = std.mem.trim(u8, output, " \t\r\n");
-    if (trimmed.len == 0) return error.GitCommandFailed;
-    return allocator.dupe(u8, trimmed);
+    return git.repoRoot(allocator, null);
 }
 
 fn isCurrentWorktree(path: []const u8, current_worktree_path: []const u8) bool {
@@ -95,18 +77,9 @@ fn splitSecondaryWorktrees(
     };
 }
 
-fn isConfirmedResponse(input: []const u8) bool {
-    const trimmed = std.mem.trim(u8, input, " \t\r\n");
-    return std.ascii.eqlIgnoreCase(trimmed, "y") or std.ascii.eqlIgnoreCase(trimmed, "yes");
-}
-
-fn isCancelKey(key: u8) bool {
-    return key == esc_key or key == ctrl_c_key;
-}
-
-fn isCancelResponse(input: []const u8) bool {
-    const trimmed = std.mem.trim(u8, input, " \t\r\n");
-    if (trimmed.len == 1 and isCancelKey(trimmed[0])) return true;
+fn isCancelResponse(txt: []const u8) bool {
+    const trimmed = std.mem.trim(u8, txt, " \t\r\n");
+    if (trimmed.len == 1 and input.isCancelKey(trimmed[0])) return true;
     return std.ascii.eqlIgnoreCase(trimmed, "q") or
         std.ascii.eqlIgnoreCase(trimmed, "quit") or
         std.ascii.eqlIgnoreCase(trimmed, "cancel");
@@ -117,14 +90,14 @@ fn unsafeRemovalDecisionFromSingleKey(key_raw: u8) ?bool {
     if (key == '\r' or key == '\n') return false;
     if (key == 'y') return true;
     if (key == 'n') return false;
-    if (isCancelKey(key_raw)) return false;
+    if (input.isCancelKey(key_raw)) return false;
     return null;
 }
 
-fn unsafeRemovalDecisionFromLineInput(input: []const u8) ?bool {
-    const trimmed = std.mem.trim(u8, input, " \t\r\n");
+fn unsafeRemovalDecisionFromLineInput(txt: []const u8) ?bool {
+    const trimmed = std.mem.trim(u8, txt, " \t\r\n");
     if (trimmed.len == 0) return false;
-    if (isConfirmedResponse(trimmed)) return true;
+    if (input.isConfirmedResponse(trimmed)) return true;
     if (std.ascii.eqlIgnoreCase(trimmed, "n") or std.ascii.eqlIgnoreCase(trimmed, "no")) return false;
     if (isCancelResponse(trimmed)) return false;
     return null;
@@ -153,39 +126,6 @@ fn writeLocalCommitWarning(stdout: anytype, base_ref: []const u8) !void {
 
 fn isInteractiveSession() bool {
     return std.fs.File.stdin().isTty() and std.fs.File.stdout().isTty();
-}
-
-fn isSingleKeySupported(stdin_file: std.fs.File) bool {
-    if (comptime builtin.target.os.tag == .windows) {
-        return false;
-    } else {
-        if (!stdin_file.isTty()) return false;
-        _ = std.posix.tcgetattr(stdin_file.handle) catch return false;
-        return true;
-    }
-}
-
-fn tryReadSingleKey(stdin_file: std.fs.File) !?u8 {
-    if (comptime builtin.target.os.tag == .windows) {
-        return null;
-    } else {
-        if (!isSingleKeySupported(stdin_file)) return null;
-
-        const original_termios = std.posix.tcgetattr(stdin_file.handle) catch return null;
-        var raw_termios = original_termios;
-        raw_termios.lflag.ICANON = false;
-        raw_termios.lflag.ECHO = false;
-        raw_termios.lflag.ISIG = false;
-        raw_termios.cc[@intFromEnum(std.c.V.MIN)] = 1;
-        raw_termios.cc[@intFromEnum(std.c.V.TIME)] = 0;
-        std.posix.tcsetattr(stdin_file.handle, .NOW, raw_termios) catch return null;
-        defer std.posix.tcsetattr(stdin_file.handle, .NOW, original_termios) catch {};
-
-        var buf: [1]u8 = undefined;
-        const read_len = std.posix.read(stdin_file.handle, &buf) catch return null;
-        if (read_len == 0) return null;
-        return buf[0];
-    }
 }
 
 fn formatCandidateSummary(buffer: []u8, candidate: RemovalCandidate) []const u8 {
@@ -277,7 +217,7 @@ fn promptSelectionRawMode(
         var digit_len: usize = 0;
 
         while (true) {
-            const key = (try tryReadSingleKey(stdin_file)) orelse return error.SingleKeyUnavailable;
+            const key = (try input.tryReadSingleKey(stdin_file)) orelse return error.SingleKeyUnavailable;
             if (key == '\r' or key == '\n') {
                 try stdout.writeAll("\n");
                 if (digit_len == 0) {
@@ -298,7 +238,7 @@ fn promptSelectionRawMode(
                 return selected - 1;
             }
 
-            if (isCancelKey(key)) {
+            if (input.isCancelKey(key)) {
                 try stdout.writeAll("\n");
                 return null;
             }
@@ -339,7 +279,7 @@ fn selectViaBuiltin(
         try printCandidateRow(stdout, use_color, idx, candidate);
     }
 
-    if (isSingleKeySupported(stdin_file)) {
+    if (input.isSingleKeySupported(stdin_file)) {
         return promptSelectionRawMode(stdout, stdin_file, candidates.len) catch |err| switch (err) {
             error.SingleKeyUnavailable => promptSelectionLineMode(stdout, stdin_file, candidates.len),
             else => err,
@@ -347,13 +287,6 @@ fn selectViaBuiltin(
     }
 
     return promptSelectionLineMode(stdout, stdin_file, candidates.len);
-}
-fn isFzfCancelTerm(term: std.process.Child.Term) bool {
-    return switch (term) {
-        .Exited => |code| code == 130,
-        .Signal => |signal| signal == 2,
-        else => false,
-    };
 }
 
 fn selectViaFzf(
@@ -413,12 +346,12 @@ fn selectViaFzf(
     }
 
     {
-        var input = child.stdin.?.deprecatedWriter();
+        var fzf_input = child.stdin.?.deprecatedWriter();
 
         var header_buf: [256]u8 = undefined;
         var header_fbs = std.io.fixedBufferStream(&header_buf);
         try picker_format.writeRmHeader(header_fbs.writer());
-        try input.print("0\t{s}\n", .{header_fbs.getWritten()});
+        try fzf_input.print("0\t{s}\n", .{header_fbs.getWritten()});
 
         for (candidates, 0..) |candidate, idx| {
             var summary_buf: [128]u8 = undefined;
@@ -433,7 +366,7 @@ fn selectViaFzf(
             var display_buf: [768]u8 = undefined;
             var display_fbs = std.io.fixedBufferStream(&display_buf);
             try picker_format.writeRmRow(display_fbs.writer(), branch_name, status, candidate.path);
-            try input.print("{d}\t{s}\n", .{ idx + 1, display_fbs.getWritten() });
+            try fzf_input.print("{d}\t{s}\n", .{ idx + 1, display_fbs.getWritten() });
         }
     }
     child.stdin.?.close();
@@ -447,7 +380,7 @@ fn selectViaFzf(
     try child.collectOutput(allocator, &stdout_buf, &stderr_buf, 1024 * 1024);
     const term = try child.wait();
 
-    if (isFzfCancelTerm(term)) return null;
+    if (picker.isFzfCancelTerm(term)) return null;
 
     switch (term) {
         .Exited => |code| {
@@ -509,32 +442,6 @@ fn printSkipCurrentWorktreeMessage(
     try stderr.print("  branch: {s}\n", .{current_branch});
     try stderr.print("  path:   {s}\n", .{current_path});
     try stderr.writeAll("Remove it from another checkout if needed.\n\n");
-}
-
-fn commandExists(allocator: std.mem.Allocator, name: []const u8) bool {
-    const result = std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &.{ name, "--version" },
-    }) catch return false;
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
-
-    return switch (result.term) {
-        .Exited => |code| code == 0,
-        else => false,
-    };
-}
-
-fn resolvePickerMode(
-    allocator: std.mem.Allocator,
-    requested: PickerMode,
-    detector: CommandDetector,
-) !PickerMode {
-    return switch (requested) {
-        .builtin => .builtin,
-        .fzf => if (detector(allocator, "fzf")) .fzf else error.FzfUnavailable,
-        .auto => if (detector(allocator, "fzf")) .fzf else .builtin,
-    };
 }
 
 fn inspectCandidate(
@@ -611,7 +518,7 @@ fn confirmUnsafeRemoval(
     while (true) {
         try stdout.print("Remove anyway? [y/N]: ", .{});
 
-        if (try tryReadSingleKey(stdin_file)) |key_raw| {
+        if (try input.tryReadSingleKey(stdin_file)) |key_raw| {
             if (unsafeRemovalDecisionFromSingleKey(key_raw)) |decision| {
                 const key = std.ascii.toLower(key_raw);
                 if (key == 'y') {
@@ -814,7 +721,7 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     };
     defer allocator.free(candidates);
 
-    const resolved_mode = resolvePickerMode(allocator, options.picker_mode, commandExists) catch |err| {
+    const resolved_mode = picker.resolvePickerMode(allocator, options.picker_mode, picker.commandExists) catch |err| {
         switch (err) {
             error.FzfUnavailable => {
                 try ui.printLevel(stderr, use_stderr_color, .err, "picker 'fzf' was requested but fzf is not available on PATH", .{});
@@ -862,6 +769,23 @@ test "parsePickerMode rejects invalid values" {
     try std.testing.expectError(error.InvalidPickerMode, parsePickerMode("gum"));
 }
 
+test "resolvePickerMode auto prefers fzf when available" {
+    const resolved = try picker.resolvePickerMode(std.testing.allocator, .auto, detectorAlwaysTrue);
+    try std.testing.expectEqual(PickerMode.fzf, resolved);
+}
+
+test "resolvePickerMode auto falls back to builtin when fzf unavailable" {
+    const resolved = try picker.resolvePickerMode(std.testing.allocator, .auto, detectorAlwaysFalse);
+    try std.testing.expectEqual(PickerMode.builtin, resolved);
+}
+
+test "resolvePickerMode explicit fzf fails when unavailable" {
+    try std.testing.expectError(
+        error.FzfUnavailable,
+        picker.resolvePickerMode(std.testing.allocator, .fzf, detectorAlwaysFalse),
+    );
+}
+
 fn detectorAlwaysTrue(_: std.mem.Allocator, _: []const u8) bool {
     return true;
 }
@@ -870,27 +794,10 @@ fn detectorAlwaysFalse(_: std.mem.Allocator, _: []const u8) bool {
     return false;
 }
 
-test "resolvePickerMode auto prefers fzf when available" {
-    const resolved = try resolvePickerMode(std.testing.allocator, .auto, detectorAlwaysTrue);
-    try std.testing.expectEqual(PickerMode.fzf, resolved);
-}
-
-test "resolvePickerMode auto falls back to builtin when fzf unavailable" {
-    const resolved = try resolvePickerMode(std.testing.allocator, .auto, detectorAlwaysFalse);
-    try std.testing.expectEqual(PickerMode.builtin, resolved);
-}
-
-test "resolvePickerMode explicit fzf fails when unavailable" {
-    try std.testing.expectError(
-        error.FzfUnavailable,
-        resolvePickerMode(std.testing.allocator, .fzf, detectorAlwaysFalse),
-    );
-}
-
 test "isFzfCancelTerm recognizes cancel exit" {
-    try std.testing.expect(isFzfCancelTerm(.{ .Exited = 130 }));
-    try std.testing.expect(isFzfCancelTerm(.{ .Signal = 2 }));
-    try std.testing.expect(!isFzfCancelTerm(.{ .Exited = 1 }));
+    try std.testing.expect(picker.isFzfCancelTerm(.{ .Exited = 130 }));
+    try std.testing.expect(picker.isFzfCancelTerm(.{ .Signal = 2 }));
+    try std.testing.expect(!picker.isFzfCancelTerm(.{ .Exited = 1 }));
 }
 
 test "branchDeleteAction skips detached worktrees" {
@@ -980,23 +887,23 @@ test "formatCandidateSummary uses dirty and local-commits markers" {
 }
 
 test "cancel helpers recognize q and control keys" {
-    try std.testing.expect(isCancelKey(esc_key));
-    try std.testing.expect(isCancelKey(ctrl_c_key));
-    try std.testing.expect(!isCancelKey('q'));
+    try std.testing.expect(input.isCancelKey(input.esc_key));
+    try std.testing.expect(input.isCancelKey(input.ctrl_c_key));
+    try std.testing.expect(!input.isCancelKey('q'));
 
     try std.testing.expect(isCancelResponse("q"));
     try std.testing.expect(isCancelResponse("quit"));
     try std.testing.expect(isCancelResponse("cancel"));
 
-    const esc_text = [_]u8{esc_key};
-    const ctrl_c_text = [_]u8{ctrl_c_key};
+    const esc_text = [_]u8{input.esc_key};
+    const ctrl_c_text = [_]u8{input.ctrl_c_key};
     try std.testing.expect(isCancelResponse(&esc_text));
     try std.testing.expect(isCancelResponse(&ctrl_c_text));
 }
 
 test "unsafe removal decision supports immediate cancel and yes/no keys" {
-    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromSingleKey(esc_key));
-    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromSingleKey(ctrl_c_key));
+    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromSingleKey(input.esc_key));
+    try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromSingleKey(input.ctrl_c_key));
     try std.testing.expectEqual(@as(?bool, true), unsafeRemovalDecisionFromSingleKey('y'));
     try std.testing.expectEqual(@as(?bool, true), unsafeRemovalDecisionFromSingleKey('Y'));
     try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromSingleKey('n'));
@@ -1005,8 +912,8 @@ test "unsafe removal decision supports immediate cancel and yes/no keys" {
 }
 
 test "unsafe removal decision line mode supports escaped cancel and defaults" {
-    const esc_text = [_]u8{esc_key};
-    const ctrl_c_text = [_]u8{ctrl_c_key};
+    const esc_text = [_]u8{input.esc_key};
+    const ctrl_c_text = [_]u8{input.ctrl_c_key};
     try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromLineInput(&esc_text));
     try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromLineInput(&ctrl_c_text));
     try std.testing.expectEqual(@as(?bool, false), unsafeRemovalDecisionFromLineInput(""));

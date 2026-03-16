@@ -9,6 +9,8 @@ pub const worktree_status = @import("worktree_status.zig");
 pub const picker_format = @import("picker_format.zig");
 pub const column_format = @import("column_format.zig");
 pub const ui = @import("ui.zig");
+pub const picker = @import("picker.zig");
+pub const input = @import("input.zig");
 
 test {
     @import("std").testing.refAllDecls(@This());

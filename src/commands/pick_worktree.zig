@@ -1,55 +1,15 @@
 const std = @import("std");
 const git = @import("../lib/git.zig");
+const picker = @import("../lib/picker.zig");
 const picker_format = @import("../lib/picker_format.zig");
 const worktree_status = @import("../lib/worktree_status.zig");
 const ui = @import("../lib/ui.zig");
 
-pub const PickerMode = enum {
-    auto,
-    builtin,
-    fzf,
-};
-
-pub fn parsePickerMode(raw: []const u8) !PickerMode {
-    const value = std.mem.trim(u8, raw, " \t\r\n");
-    if (std.ascii.eqlIgnoreCase(value, "auto")) return .auto;
-    if (std.ascii.eqlIgnoreCase(value, "builtin")) return .builtin;
-    if (std.ascii.eqlIgnoreCase(value, "fzf")) return .fzf;
-    return error.InvalidPickerMode;
-}
-
-fn commandExists(allocator: std.mem.Allocator, name: []const u8) bool {
-    const result = std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &.{ name, "--version" },
-    }) catch return false;
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
-
-    return switch (result.term) {
-        .Exited => |code| code == 0,
-        else => false,
-    };
-}
-
-fn resolvePickerMode(allocator: std.mem.Allocator, requested: PickerMode) !PickerMode {
-    return switch (requested) {
-        .builtin => .builtin,
-        .fzf => if (commandExists(allocator, "fzf")) .fzf else error.FzfUnavailable,
-        .auto => if (commandExists(allocator, "fzf")) .fzf else .builtin,
-    };
-}
+pub const PickerMode = picker.PickerMode;
+pub const parsePickerMode = picker.parsePickerMode;
 
 fn isInteractiveSession() bool {
     return std.fs.File.stdin().isTty() and std.fs.File.stderr().isTty();
-}
-
-fn isFzfCancelTerm(term: std.process.Child.Term) bool {
-    return switch (term) {
-        .Exited => |code| code == 130,
-        .Signal => |signal| signal == 2,
-        else => false,
-    };
 }
 
 fn buildRows(
@@ -71,6 +31,38 @@ fn isCancelResponse(input: []const u8) bool {
         std.ascii.eqlIgnoreCase(trimmed, "cancel");
 }
 
+fn formatPickerRow(
+    row: worktree_status.WorktreeRow,
+    use_color: bool,
+    raw_summary_buf: []u8,
+    summary_buf: []u8,
+    branch_buf: []u8,
+) struct { summary: []const u8, branch_name: []const u8 } {
+    const raw_summary = worktree_status.pickerStatusSummary(row, raw_summary_buf);
+    const summary = if (use_color) blk: {
+        const summary_color: []const u8 = if (!row.status_known)
+            ui.ansi.yellow
+        else if (row.modified == 0 and row.untracked == 0 and row.ahead == 0 and row.behind == 0)
+            ui.ansi.green
+        else
+            ui.ansi.yellow;
+        break :blk std.fmt.bufPrint(summary_buf, "{s}{s}{s}", .{
+            summary_color,
+            raw_summary,
+            ui.ansi.reset,
+        }) catch raw_summary;
+    } else raw_summary;
+    const branch_name = if (use_color and row.is_current) blk: {
+        break :blk std.fmt.bufPrint(branch_buf, "{s}{s}{s}", .{
+            ui.ansi.bold,
+            row.branch_name,
+            ui.ansi.reset,
+        }) catch row.branch_name;
+    } else row.branch_name;
+
+    return .{ .summary = summary, .branch_name = branch_name };
+}
+
 fn selectViaBuiltin(
     stderr: anytype,
     stdin_file: std.fs.File,
@@ -85,33 +77,13 @@ fn selectViaBuiltin(
 
     for (rows, 0..) |row, idx| {
         var raw_summary_buf: [128]u8 = undefined;
-        const raw_summary = worktree_status.pickerStatusSummary(row, &raw_summary_buf);
         var summary_buf: [192]u8 = undefined;
-        const summary = if (use_color) blk: {
-            const summary_color: []const u8 = if (!row.status_known)
-                ui.ansi.yellow
-            else if (row.modified == 0 and row.untracked == 0 and row.ahead == 0 and row.behind == 0)
-                ui.ansi.green
-            else
-                ui.ansi.yellow;
-            break :blk std.fmt.bufPrint(&summary_buf, "{s}{s}{s}", .{
-                summary_color,
-                raw_summary,
-                ui.ansi.reset,
-            }) catch raw_summary;
-        } else raw_summary;
         var branch_buf: [128]u8 = undefined;
-        const branch_name = if (use_color and row.is_current) blk: {
-            break :blk std.fmt.bufPrint(&branch_buf, "{s}{s}{s}", .{
-                ui.ansi.bold,
-                row.branch_name,
-                ui.ansi.reset,
-            }) catch row.branch_name;
-        } else row.branch_name;
+        const formatted = formatPickerRow(row, use_color, &raw_summary_buf, &summary_buf, &branch_buf);
 
         var display_buf: [768]u8 = undefined;
         var display_fbs = std.io.fixedBufferStream(&display_buf);
-        try picker_format.writeWorktreeRow(display_fbs.writer(), branch_name, summary, row.path);
+        try picker_format.writeWorktreeRow(display_fbs.writer(), formatted.branch_name, formatted.summary, row.path);
         try stderr.print("  [{d}] {s}\n", .{ idx + 1, display_fbs.getWritten() });
     }
 
@@ -210,33 +182,13 @@ fn selectViaFzf(
 
         for (rows, 0..) |row, idx| {
             var raw_summary_buf: [128]u8 = undefined;
-            const raw_summary = worktree_status.pickerStatusSummary(row, &raw_summary_buf);
             var summary_buf: [192]u8 = undefined;
-            const summary = if (use_color) blk: {
-                const summary_color: []const u8 = if (!row.status_known)
-                    ui.ansi.yellow
-                else if (row.modified == 0 and row.untracked == 0 and row.ahead == 0 and row.behind == 0)
-                    ui.ansi.green
-                else
-                    ui.ansi.yellow;
-                break :blk std.fmt.bufPrint(&summary_buf, "{s}{s}{s}", .{
-                    summary_color,
-                    raw_summary,
-                    ui.ansi.reset,
-                }) catch raw_summary;
-            } else raw_summary;
             var branch_buf: [128]u8 = undefined;
-            const branch_name = if (use_color and row.is_current) blk: {
-                break :blk std.fmt.bufPrint(&branch_buf, "{s}{s}{s}", .{
-                    ui.ansi.bold,
-                    row.branch_name,
-                    ui.ansi.reset,
-                }) catch row.branch_name;
-            } else row.branch_name;
+            const formatted = formatPickerRow(row, use_color, &raw_summary_buf, &summary_buf, &branch_buf);
 
             var display_buf: [768]u8 = undefined;
             var display_fbs = std.io.fixedBufferStream(&display_buf);
-            try picker_format.writeWorktreeRow(display_fbs.writer(), branch_name, summary, row.path);
+            try picker_format.writeWorktreeRow(display_fbs.writer(), formatted.branch_name, formatted.summary, row.path);
             try input.print("{d}\t{s}\n", .{ idx + 1, display_fbs.getWritten() });
         }
     }
@@ -252,7 +204,7 @@ fn selectViaFzf(
     try child.collectOutput(allocator, &stdout_buf, &stderr_buf, 1024 * 1024);
     const term = try child.wait();
 
-    if (isFzfCancelTerm(term)) return null;
+    if (picker.isFzfCancelTerm(term)) return null;
 
     switch (term) {
         .Exited => |code| if (code != 0) return error.FzfFailed,
@@ -305,7 +257,7 @@ pub fn run(allocator: std.mem.Allocator, requested_picker: PickerMode) !void {
     const rows = try buildRows(allocator, cwd, worktrees);
     defer allocator.free(rows);
 
-    const resolved_mode = resolvePickerMode(allocator, requested_picker) catch |err| {
+    const resolved_mode = picker.resolvePickerMode(allocator, requested_picker, picker.commandExists) catch |err| {
         switch (err) {
             error.FzfUnavailable => {
                 try ui.printLevel(stderr, use_color, .err, "picker 'fzf' was requested but fzf is not available on PATH", .{});
