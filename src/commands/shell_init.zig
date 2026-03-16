@@ -212,6 +212,22 @@ fn emitZshInit() []const u8 {
     \\# wt shell integration
     \\# Add to .zshrc: eval "$(wt shell-init zsh)"
     \\
+    \\__wt_complete_root_flags() {
+    \\    compadd -- --help -h --version -V
+    \\}
+    \\
+    \\__wt_complete_help_flags() {
+    \\    compadd -- --help -h
+    \\}
+    \\
+    \\__wt_complete_rm_flags() {
+    \\    compadd -- --help -h --force -f --picker --no-interactive
+    \\}
+    \\
+    \\__wt_complete_picker_values() {
+    \\    compadd -- auto builtin fzf
+    \\}
+    \\
     \\__wt_complete_local_branches() {
     \\    local branch
     \\    local -a branches
@@ -249,14 +265,11 @@ fn emitZshInit() []const u8 {
     \\}
     \\
     \\__wt_complete_worktree_branches() {
-    \\    local current branch
+    \\    local branch
     \\    local -a branches
     \\    typeset -A seen
-    \\    while IFS=$'\t' read -r current branch _; do
+    \\    while IFS= read -r branch; do
     \\        if [ -z "$branch" ] || [ "$branch" = "(detached)" ] || [ "$branch" = "-" ]; then
-    \\            continue
-    \\        fi
-    \\        if [ "$current" = "1" ]; then
     \\            continue
     \\        fi
     \\        if [ -z "${seen[$branch]}" ]; then
@@ -277,7 +290,12 @@ fn emitZshInit() []const u8 {
     \\    )
     \\
     \\    if [ "$CURRENT" -eq 2 ]; then
-    \\        _describe -t commands "wt command" commands
+    \\        if [[ "$words[CURRENT]" == -* ]]; then
+    \\            __wt_complete_root_flags
+    \\        else
+    \\            _describe -t commands "wt command" commands
+    \\            __wt_complete_root_flags
+    \\        fi
     \\        return 0
     \\    fi
     \\
@@ -286,25 +304,45 @@ fn emitZshInit() []const u8 {
     \\    fi
     \\
     \\    case "$cmd" in
+    \\        list|ls)
+    \\            if [[ "$words[CURRENT]" == -* ]]; then
+    \\                __wt_complete_help_flags
+    \\            fi
+    \\            ;;
     \\        new|add)
-    \\            if [ "$CURRENT" -eq 3 ]; then
+    \\            if [[ "$words[CURRENT]" == -* ]]; then
+    \\                __wt_complete_help_flags
+    \\            elif [ "$CURRENT" -eq 3 ]; then
     \\                __wt_complete_local_branches
     \\            elif [ "$CURRENT" -eq 4 ]; then
     \\                __wt_complete_refs
     \\            fi
     \\            ;;
     \\        rm)
-    \\            if [ "$CURRENT" -eq 3 ]; then
+    \\            if [ "$CURRENT" -gt 2 ] && [ "$words[CURRENT-1]" = "--picker" ]; then
+    \\                __wt_complete_picker_values
+    \\            elif [[ "$words[CURRENT]" == -* ]]; then
+    \\                __wt_complete_rm_flags
+    \\            elif [ "$CURRENT" -eq 3 ]; then
     \\                __wt_complete_worktree_branches
     \\            fi
     \\            ;;
     \\        switch)
-    \\            if [ "$CURRENT" -eq 3 ]; then
+    \\            if [[ "$words[CURRENT]" == -* ]]; then
+    \\                __wt_complete_help_flags
+    \\            elif [ "$CURRENT" -eq 3 ]; then
     \\                __wt_complete_worktree_branches
     \\            fi
     \\            ;;
+    \\        init)
+    \\            if [[ "$words[CURRENT]" == -* ]]; then
+    \\                __wt_complete_help_flags
+    \\            fi
+    \\            ;;
     \\        shell-init)
-    \\            if [ "$CURRENT" -eq 3 ]; then
+    \\            if [[ "$words[CURRENT]" == -* ]]; then
+    \\                __wt_complete_help_flags
+    \\            elif [ "$CURRENT" -eq 3 ]; then
     \\
 ++ "                compadd -- " ++ shell_name_choices ++ "\n" ++
     \\            fi
@@ -361,7 +399,7 @@ fn emitBashInit() []const u8 {
     \\    fi
     \\
     \\    case "$cmd" in
-    \\        list)
+    \\        list|ls)
     \\            COMPREPLY=($(compgen -W "--help -h" -- "$cur"))
     \\            return 0
     \\            ;;
@@ -464,6 +502,18 @@ fn emitFishInit() []const u8 {
     \\complete -e -c wt
     \\complete -f -c wt
 ++ "\n" ++ fish_command_completions ++
+    \\complete -c wt -n "__fish_use_subcommand" -s h -l help -d "Show help"
+    \\complete -c wt -n "__fish_use_subcommand" -s V -l version -d "Print version"
+    \\complete -c wt -n "__fish_seen_subcommand_from list ls" -s h -l help -d "Show help"
+    \\complete -c wt -n "__fish_seen_subcommand_from new add" -s h -l help -d "Show help"
+    \\complete -c wt -n "__fish_seen_subcommand_from rm" -s h -l help -d "Show help"
+    \\complete -c wt -n "__fish_seen_subcommand_from rm" -s f -l force -d "Force removal"
+    \\complete -c wt -n "__fish_seen_subcommand_from rm" -l picker -r -d "Picker backend"
+    \\complete -c wt -n "__fish_seen_subcommand_from rm" -l no-interactive -d "Disable interactive picker"
+    \\complete -f -c wt -n "__fish_seen_subcommand_from rm; and __fish_prev_arg_in --picker" -a "auto builtin fzf"
+    \\complete -c wt -n "__fish_seen_subcommand_from switch" -s h -l help -d "Show help"
+    \\complete -c wt -n "__fish_seen_subcommand_from init" -s h -l help -d "Show help"
+    \\complete -c wt -n "__fish_seen_subcommand_from shell-init" -s h -l help -d "Show help"
     \\complete -f -c wt -n "__fish_seen_subcommand_from new add; and test (count (commandline -opc)) -eq 2" -a "(__wt_complete_local_branches)"
     \\complete -f -c wt -n "__fish_seen_subcommand_from new add; and test (count (commandline -opc)) -eq 3" -a "(__wt_complete_refs)"
     \\complete -f -c wt -n "__fish_seen_subcommand_from rm; and test (count (commandline -opc)) -eq 2" -a "(__wt_complete_worktree_branches)"
@@ -652,15 +702,45 @@ fn emitNuInit() []const u8 {
     \\    ]
     \\}
     \\
+    \\def "__wt_complete_root_flags" [] {
+    \\    ["--help" "-h" "--version" "-V"]
+    \\}
+    \\
+    \\def "__wt_complete_help_flags" [] {
+    \\    ["--help" "-h"]
+    \\}
+    \\
+    \\def "__wt_complete_rm_flags" [] {
+    \\    ["--help" "-h" "--force" "-f" "--picker" "--no-interactive"]
+    \\}
+    \\
+    \\def "__wt_complete_picker_values" [] {
+    \\    ["auto" "builtin" "fzf"]
+    \\}
+    \\
     \\def "nu-complete wt" [spans: list<string>] {
     \\    let total = ($spans | length)
+    \\    let current = if $total == 0 { "" } else { $spans | last }
+    \\    let previous = if $total > 1 { $spans | get ($total - 2) } else { "" }
     \\    if $total <= 2 {
+    \\        if ($current | str starts-with "-") {
+    \\            return (__wt_complete_root_flags)
+    \\        }
     \\        return (nu-complete wt commands)
     \\    }
     \\
     \\    let cmd = ($spans | get 1)
     \\    match $cmd {
+    \\        "list" | "ls" => {
+    \\            if ($current | str starts-with "-") {
+    \\                return (__wt_complete_help_flags)
+    \\            }
+    \\            return []
+    \\        }
     \\        "new" | "add" => {
+    \\            if ($current | str starts-with "-") {
+    \\                return (__wt_complete_help_flags)
+    \\            }
     \\            let positional = ($spans | skip 2 | where {|arg| not ($arg | str starts-with "-")})
     \\            if ($positional | length) <= 1 {
     \\                return (__wt_complete_local_branches)
@@ -671,6 +751,12 @@ fn emitNuInit() []const u8 {
     \\            return []
     \\        }
     \\        "rm" => {
+    \\            if $previous == "--picker" {
+    \\                return (__wt_complete_picker_values)
+    \\            }
+    \\            if ($current | str starts-with "-") {
+    \\                return (__wt_complete_rm_flags)
+    \\            }
     \\            let positional = ($spans | skip 2 | where {|arg| not ($arg | str starts-with "-")})
     \\            if ($positional | length) <= 1 {
     \\                return (__wt_complete_worktree_branches)
@@ -678,13 +764,25 @@ fn emitNuInit() []const u8 {
     \\            return []
     \\        }
     \\        "switch" => {
+    \\            if ($current | str starts-with "-") {
+    \\                return (__wt_complete_help_flags)
+    \\            }
     \\            let positional = ($spans | skip 2 | where {|arg| not ($arg | str starts-with "-")})
     \\            if ($positional | length) <= 1 {
     \\                return (__wt_complete_worktree_branches)
     \\            }
     \\            return []
     \\        }
+    \\        "init" => {
+    \\            if ($current | str starts-with "-") {
+    \\                return (__wt_complete_help_flags)
+    \\            }
+    \\            return []
+    \\        }
     \\        "shell-init" => {
+    \\            if ($current | str starts-with "-") {
+    \\                return (__wt_complete_help_flags)
+    \\            }
     \\            let positional = ($spans | skip 2 | where {|arg| not ($arg | str starts-with "-")})
     \\            if ($positional | length) <= 1 {
     \\                return (__wt_complete_shell_names)
@@ -888,6 +986,10 @@ pub fn scriptForShell(shell: []const u8) ?[]const u8 {
 }
 
 test "zsh init contains function definition" {
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_root_flags()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_help_flags()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_rm_flags()") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_picker_values()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_local_branches()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_refs()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_worktree_branches()") != null);
@@ -902,16 +1004,17 @@ test "zsh init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "'shell-init:Output shell integration function'") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __complete-worktree-branches") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -- zsh bash fish nu nushell") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -- --help -h --version -V") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -- --help -h --force -f --picker --no-interactive") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "compadd -- auto builtin fzf") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __complete-local-branches 2>/dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "command wt __complete-refs 2>/dev/null") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "while IFS= read -r branch; do") != null);
+    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "IFS=$'\\t'") == null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "if [ \"$CURRENT\" -eq 3 ]; then") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "elif [ \"$CURRENT\" -eq 4 ]; then") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "__wt_complete_local_branches") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "_arguments") == null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "--picker") == null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "--force") == null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "--no-interactive") == null);
-    try std.testing.expect(std.mem.indexOf(u8, zsh_init, "--version") == null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "wt()") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "${1#-}") != null);
     try std.testing.expect(std.mem.indexOf(u8, zsh_init, "new|add") != null);
@@ -971,6 +1074,7 @@ test "bash init contains function definition" {
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "branches=$(__wt_complete_local_branches)") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "refs=$(__wt_complete_refs)") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "compgen -W \"list ls new add rm switch init shell-init --help -h --version -V\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bash_init, "list|ls)") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "switch)") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "command wt __switch \"$2\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bash_init, "Subdirectory missing in target worktree, using root: $output") != null);
@@ -986,6 +1090,13 @@ test "fish init contains function definition and completion" {
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "function __wt_complete_worktree_branches") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -e -c wt") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -c wt -n \"__fish_use_subcommand\" -s h -l help") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -c wt -n \"__fish_use_subcommand\" -s V -l version") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -c wt -n \"__fish_seen_subcommand_from list ls\" -s h -l help") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -c wt -n \"__fish_seen_subcommand_from rm\" -s f -l force") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -c wt -n \"__fish_seen_subcommand_from rm\" -l picker -r") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -c wt -n \"__fish_seen_subcommand_from rm\" -l no-interactive") != null);
+    try std.testing.expect(std.mem.indexOf(u8, fish_init, "__fish_prev_arg_in --picker") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"list\" -d \"List worktrees\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"ls\" -d \"Alias for list\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "complete -f -c wt -n \"__fish_use_subcommand\" -a \"add\" -d \"Alias for new\"") != null);
@@ -1003,10 +1114,6 @@ test "fish init contains function definition and completion" {
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "set -l candidate_dir \"$selected_path/$relative_subdir\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "Subdirectory missing in selected worktree, using root: $selected_path") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "Subdirectory missing in new worktree, using root: $output") != null);
-    try std.testing.expect(std.mem.indexOf(u8, fish_init, "--picker") == null);
-    try std.testing.expect(std.mem.indexOf(u8, fish_init, "--force") == null);
-    try std.testing.expect(std.mem.indexOf(u8, fish_init, "--no-interactive") == null);
-    try std.testing.expect(std.mem.indexOf(u8, fish_init, "--version") == null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "case switch") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "command wt __switch $argv[2]") != null);
     try std.testing.expect(std.mem.indexOf(u8, fish_init, "Subdirectory missing in target worktree, using root: $output") != null);
@@ -1028,7 +1135,16 @@ test "nu init contains wrapper and completion definitions" {
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_worktree_branches\" []") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __complete-worktree-branches err> /dev/null") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_shell_names\" []") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_root_flags\" []") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_help_flags\" []") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_rm_flags\" []") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "def \"__wt_complete_picker_values\" []") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "[\"--help\" \"-h\" \"--version\" \"-V\"]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "[\"--help\" \"-h\" \"--force\" \"-f\" \"--picker\" \"--no-interactive\"]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "[\"auto\" \"builtin\" \"fzf\"]") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "\"zsh\" \"bash\" \"fish\" \"nu\" \"nushell\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "\"list\" | \"ls\" =>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, nu_init, "if $previous == \"--picker\" {") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "if not (is-terminal --stdin) or not (is-terminal --stderr)") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "let picked = (try {") != null);
     try std.testing.expect(std.mem.indexOf(u8, nu_init, "^wt __pick-worktree err> /dev/tty | complete") != null);
