@@ -1,5 +1,6 @@
 const std = @import("std");
 const git = @import("../lib/git.zig");
+const input = @import("../lib/input.zig");
 const picker = @import("../lib/picker.zig");
 const picker_format = @import("../lib/picker_format.zig");
 const worktree_status = @import("../lib/worktree_status.zig");
@@ -8,6 +9,7 @@ const ui = @import("../lib/ui.zig");
 pub const PickerMode = picker.PickerMode;
 pub const parsePickerMode = picker.parsePickerMode;
 
+/// Checks stderr because stdout carries the selected path for shell integration.
 fn isInteractiveSession() bool {
     return std.fs.File.stdin().isTty() and std.fs.File.stderr().isTty();
 }
@@ -22,13 +24,6 @@ fn buildRows(
         rows[idx] = worktree_status.inspectWorktree(allocator, cwd, wt);
     }
     return rows;
-}
-
-fn isCancelResponse(input: []const u8) bool {
-    const trimmed = std.mem.trim(u8, input, " \t\r\n");
-    return std.ascii.eqlIgnoreCase(trimmed, "q") or
-        std.ascii.eqlIgnoreCase(trimmed, "quit") or
-        std.ascii.eqlIgnoreCase(trimmed, "cancel");
 }
 
 fn formatPickerRow(
@@ -98,7 +93,7 @@ fn selectViaBuiltin(
             try stderr.writeAll("Please enter a number or q.\n");
             continue;
         }
-        if (isCancelResponse(trimmed)) return null;
+        if (input.isCancelResponse(trimmed)) return null;
 
         const selected = std.fmt.parseInt(usize, trimmed, 10) catch {
             try stderr.writeAll("Invalid selection. Enter a number or q.\n");
@@ -173,12 +168,12 @@ fn selectViaFzf(
     }
 
     {
-        var input = child.stdin.?.deprecatedWriter();
+        var fzf_input = child.stdin.?.deprecatedWriter();
 
         var header_buf: [256]u8 = undefined;
         var header_fbs = std.io.fixedBufferStream(&header_buf);
         try picker_format.writeWorktreeHeader(header_fbs.writer());
-        try input.print("0\t{s}\n", .{header_fbs.getWritten()});
+        try fzf_input.print("0\t{s}\n", .{header_fbs.getWritten()});
 
         for (rows, 0..) |row, idx| {
             var raw_summary_buf: [128]u8 = undefined;
@@ -189,7 +184,7 @@ fn selectViaFzf(
             var display_buf: [768]u8 = undefined;
             var display_fbs = std.io.fixedBufferStream(&display_buf);
             try picker_format.writeWorktreeRow(display_fbs.writer(), formatted.branch_name, formatted.summary, row.path);
-            try input.print("{d}\t{s}\n", .{ idx + 1, display_fbs.getWritten() });
+            try fzf_input.print("{d}\t{s}\n", .{ idx + 1, display_fbs.getWritten() });
         }
     }
 
@@ -286,14 +281,4 @@ pub fn run(allocator: std.mem.Allocator, requested_picker: PickerMode) !void {
 
     if (selected == null) return;
     try stdout.print("{s}\n", .{rows[selected.?].path});
-}
-
-test "parsePickerMode accepts known values" {
-    try std.testing.expectEqual(PickerMode.auto, try parsePickerMode("auto"));
-    try std.testing.expectEqual(PickerMode.builtin, try parsePickerMode("builtin"));
-    try std.testing.expectEqual(PickerMode.fzf, try parsePickerMode("fzf"));
-}
-
-test "parsePickerMode rejects unknown value" {
-    try std.testing.expectError(error.InvalidPickerMode, parsePickerMode("gum"));
 }

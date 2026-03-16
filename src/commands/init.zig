@@ -23,12 +23,6 @@ const YesNoDecision = enum {
     cancel,
 };
 
-const ansi_reset = ui.ansi.reset;
-const ansi_bold = ui.ansi.bold;
-const ansi_green = ui.ansi.green;
-const ansi_yellow = ui.ansi.yellow;
-const ansi_red = ui.ansi.red;
-
 fn isNegativeResponse(text: []const u8) bool {
     const trimmed = std.mem.trim(u8, text, " \t\r\n");
     return std.ascii.eqlIgnoreCase(trimmed, "n") or std.ascii.eqlIgnoreCase(trimmed, "no");
@@ -219,7 +213,7 @@ fn shouldUseColor() bool {
 
 fn printHeading(stdout: anytype, use_color: bool, heading: []const u8) !void {
     if (use_color) {
-        try stdout.print("\n{s}{s}{s}\n", .{ ansi_bold, heading, ansi_reset });
+        try stdout.print("\n{s}{s}{s}\n", .{ ui.ansi.bold, heading, ui.ansi.reset });
     } else {
         try stdout.print("\n{s}\n", .{heading});
     }
@@ -236,14 +230,14 @@ fn printStatus(stdout: anytype, use_color: bool, level: enum { ok, warn }, messa
     }
 
     const color = switch (level) {
-        .ok => ansi_green,
-        .warn => ansi_yellow,
+        .ok => ui.ansi.green,
+        .warn => ui.ansi.yellow,
     };
     const label: []const u8 = switch (level) {
         .ok => "OK:",
         .warn => "WARN:",
     };
-    try stdout.print("{s}{s}{s} {s}\n", .{ color, label, ansi_reset, message });
+    try stdout.print("{s}{s}{s} {s}\n", .{ color, label, ui.ansi.reset, message });
 }
 
 fn revertChange(cfg: *init_planner.EditableConfig, change: init_planner.Change) !void {
@@ -264,7 +258,7 @@ fn printChangesSummary(
     try printHeading(stdout, use_color, heading);
     if (!config_exists) {
         if (use_color) {
-            try stdout.print("  {s}+{s} create {s}\n", .{ ansi_green, ansi_reset, config_path });
+            try stdout.print("  {s}+{s} create {s}\n", .{ ui.ansi.green, ui.ansi.reset, config_path });
         } else {
             try stdout.print("  + create {s}\n", .{config_path});
         }
@@ -276,10 +270,10 @@ fn printChangesSummary(
         };
         if (use_color) {
             const marker_color = switch (change.kind) {
-                .add => ansi_green,
-                .remove => ansi_red,
+                .add => ui.ansi.green,
+                .remove => ui.ansi.red,
             };
-            try stdout.print("  {s}{s}{s} {s}: {s}\n", .{ marker_color, marker, ansi_reset, init_planner.sectionName(change.section), change.value });
+            try stdout.print("  {s}{s}{s} {s}: {s}\n", .{ marker_color, marker, ui.ansi.reset, init_planner.sectionName(change.section), change.value });
         } else {
             try stdout.print("  {s} {s}: {s}\n", .{ marker, init_planner.sectionName(change.section), change.value });
         }

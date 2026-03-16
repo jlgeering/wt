@@ -77,14 +77,6 @@ fn splitSecondaryWorktrees(
     };
 }
 
-fn isCancelResponse(txt: []const u8) bool {
-    const trimmed = std.mem.trim(u8, txt, " \t\r\n");
-    if (trimmed.len == 1 and input.isCancelKey(trimmed[0])) return true;
-    return std.ascii.eqlIgnoreCase(trimmed, "q") or
-        std.ascii.eqlIgnoreCase(trimmed, "quit") or
-        std.ascii.eqlIgnoreCase(trimmed, "cancel");
-}
-
 fn unsafeRemovalDecisionFromSingleKey(key_raw: u8) ?bool {
     const key = std.ascii.toLower(key_raw);
     if (key == '\r' or key == '\n') return false;
@@ -99,12 +91,8 @@ fn unsafeRemovalDecisionFromLineInput(txt: []const u8) ?bool {
     if (trimmed.len == 0) return false;
     if (input.isConfirmedResponse(trimmed)) return true;
     if (std.ascii.eqlIgnoreCase(trimmed, "n") or std.ascii.eqlIgnoreCase(trimmed, "no")) return false;
-    if (isCancelResponse(trimmed)) return false;
+    if (input.isCancelResponse(trimmed)) return false;
     return null;
-}
-
-fn shouldUseColor() bool {
-    return ui.shouldUseColor(std.fs.File.stdout());
 }
 
 fn branchDeleteAction(candidate: RemovalCandidate) BranchDeleteAction {
@@ -124,6 +112,7 @@ fn writeLocalCommitWarning(stdout: anytype, base_ref: []const u8) !void {
     try stdout.print("- worktree has commits not in primary checkout ({s})\n", .{base_ref});
 }
 
+/// Checks stdout because this command prompts on stdout.
 fn isInteractiveSession() bool {
     return std.fs.File.stdin().isTty() and std.fs.File.stdout().isTty();
 }
@@ -187,7 +176,7 @@ fn promptSelectionLineMode(
             continue;
         }
 
-        if (isCancelResponse(trimmed)) {
+        if (input.isCancelResponse(trimmed)) {
             return null;
         }
 
@@ -622,7 +611,7 @@ fn removeCandidate(
 pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
     const stderr = std.fs.File.stderr().deprecatedWriter();
-    const use_color = shouldUseColor();
+    const use_color = ui.shouldUseColor(std.fs.File.stdout());
     const use_stderr_color = ui.shouldUseColor(std.fs.File.stderr());
 
     const wt_output = git.runGit(allocator, null, &.{ "worktree", "list", "--porcelain" }) catch {
@@ -758,48 +747,6 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
     try removeCandidate(allocator, candidates[selected_index.?], main_path, base_ref, options.force);
 }
 
-test "parsePickerMode accepts known values" {
-    try std.testing.expectEqual(PickerMode.auto, try parsePickerMode("auto"));
-    try std.testing.expectEqual(PickerMode.builtin, try parsePickerMode("builtin"));
-    try std.testing.expectEqual(PickerMode.fzf, try parsePickerMode("fzf"));
-    try std.testing.expectEqual(PickerMode.auto, try parsePickerMode(" AUTO "));
-}
-
-test "parsePickerMode rejects invalid values" {
-    try std.testing.expectError(error.InvalidPickerMode, parsePickerMode("gum"));
-}
-
-test "resolvePickerMode auto prefers fzf when available" {
-    const resolved = try picker.resolvePickerMode(std.testing.allocator, .auto, detectorAlwaysTrue);
-    try std.testing.expectEqual(PickerMode.fzf, resolved);
-}
-
-test "resolvePickerMode auto falls back to builtin when fzf unavailable" {
-    const resolved = try picker.resolvePickerMode(std.testing.allocator, .auto, detectorAlwaysFalse);
-    try std.testing.expectEqual(PickerMode.builtin, resolved);
-}
-
-test "resolvePickerMode explicit fzf fails when unavailable" {
-    try std.testing.expectError(
-        error.FzfUnavailable,
-        picker.resolvePickerMode(std.testing.allocator, .fzf, detectorAlwaysFalse),
-    );
-}
-
-fn detectorAlwaysTrue(_: std.mem.Allocator, _: []const u8) bool {
-    return true;
-}
-
-fn detectorAlwaysFalse(_: std.mem.Allocator, _: []const u8) bool {
-    return false;
-}
-
-test "isFzfCancelTerm recognizes cancel exit" {
-    try std.testing.expect(picker.isFzfCancelTerm(.{ .Exited = 130 }));
-    try std.testing.expect(picker.isFzfCancelTerm(.{ .Signal = 2 }));
-    try std.testing.expect(!picker.isFzfCancelTerm(.{ .Exited = 1 }));
-}
-
 test "branchDeleteAction skips detached worktrees" {
     const detached: RemovalCandidate = .{
         .path = "/tmp/repo--detached",
@@ -891,14 +838,14 @@ test "cancel helpers recognize q and control keys" {
     try std.testing.expect(input.isCancelKey(input.ctrl_c_key));
     try std.testing.expect(!input.isCancelKey('q'));
 
-    try std.testing.expect(isCancelResponse("q"));
-    try std.testing.expect(isCancelResponse("quit"));
-    try std.testing.expect(isCancelResponse("cancel"));
+    try std.testing.expect(input.isCancelResponse("q"));
+    try std.testing.expect(input.isCancelResponse("quit"));
+    try std.testing.expect(input.isCancelResponse("cancel"));
 
     const esc_text = [_]u8{input.esc_key};
     const ctrl_c_text = [_]u8{input.ctrl_c_key};
-    try std.testing.expect(isCancelResponse(&esc_text));
-    try std.testing.expect(isCancelResponse(&ctrl_c_text));
+    try std.testing.expect(input.isCancelResponse(&esc_text));
+    try std.testing.expect(input.isCancelResponse(&ctrl_c_text));
 }
 
 test "unsafe removal decision supports immediate cancel and yes/no keys" {

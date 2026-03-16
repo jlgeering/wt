@@ -33,10 +33,6 @@ const wt_width: usize = 8;
 const base_width: usize = 9;
 const upstream_width: usize = 9;
 
-fn shouldUseColor() bool {
-    return ui.shouldUseColor(std.fs.File.stdout());
-}
-
 fn wtStateLabel(row: WorktreeRow) []const u8 {
     if (!row.wt_known) return "unknown";
     return if (row.tracked_changes == 0 and row.untracked == 0) "clean" else "dirty";
@@ -281,7 +277,7 @@ fn runWithMode(allocator: std.mem.Allocator, mode: OutputMode) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
     const stderr = std.fs.File.stderr().deprecatedWriter();
     const use_stderr_color = ui.shouldUseColor(std.fs.File.stderr());
-    const use_color = shouldUseColor();
+    const use_color = ui.shouldUseColor(std.fs.File.stdout());
 
     const cwd = try std.process.getCwdAlloc(allocator);
     defer allocator.free(cwd);

@@ -260,6 +260,15 @@ fn buildPickWorktreeCommand(writer: *std.Io.Writer, reader: *std.Io.Reader, allo
     return cmd;
 }
 
+fn requireArg(ctx: zli.CommandContext, name: []const u8, comptime message: []const u8) []const u8 {
+    return ctx.getArg(name) orelse {
+        const stderr = std.fs.File.stderr().deprecatedWriter();
+        const use_color = ui.shouldUseColor(std.fs.File.stderr());
+        ui.printLevel(stderr, use_color, .err, message, .{}) catch {};
+        std.process.exit(1);
+    };
+}
+
 fn runRoot(ctx: zli.CommandContext) !void {
     if (ctx.flag("version", bool)) {
         try std.fs.File.stdout().deprecatedWriter().print("wt {s} ({s})\n", .{ build_options.version, build_options.git_sha });
@@ -278,42 +287,22 @@ fn runInternalList(ctx: zli.CommandContext) !void {
 }
 
 fn runNew(ctx: zli.CommandContext) !void {
-    const branch = ctx.getArg("BRANCH") orelse {
-        const stderr = std.fs.File.stderr().deprecatedWriter();
-        const use_color = ui.shouldUseColor(std.fs.File.stderr());
-        try ui.printLevel(stderr, use_color, .err, "branch name required", .{});
-        std.process.exit(1);
-    };
+    const branch = requireArg(ctx, "BRANCH", "branch name required");
     try new_cmd.runHuman(ctx.allocator, branch, ctx.getArg("BASE"));
 }
 
 fn runInternalNew(ctx: zli.CommandContext) !void {
-    const branch = ctx.getArg("BRANCH") orelse {
-        const stderr = std.fs.File.stderr().deprecatedWriter();
-        const use_color = ui.shouldUseColor(std.fs.File.stderr());
-        try ui.printLevel(stderr, use_color, .err, "branch name required", .{});
-        std.process.exit(1);
-    };
+    const branch = requireArg(ctx, "BRANCH", "branch name required");
     try new_cmd.runMachine(ctx.allocator, branch, ctx.getArg("BASE"));
 }
 
 fn runSwitch(ctx: zli.CommandContext) !void {
-    const branch = ctx.getArg("BRANCH") orelse {
-        const stderr = std.fs.File.stderr().deprecatedWriter();
-        const use_color = ui.shouldUseColor(std.fs.File.stderr());
-        try ui.printLevel(stderr, use_color, .err, "branch name required", .{});
-        std.process.exit(1);
-    };
+    const branch = requireArg(ctx, "BRANCH", "branch name required");
     try switch_cmd.runHuman(ctx.allocator, branch);
 }
 
 fn runInternalSwitch(ctx: zli.CommandContext) !void {
-    const branch = ctx.getArg("BRANCH") orelse {
-        const stderr = std.fs.File.stderr().deprecatedWriter();
-        const use_color = ui.shouldUseColor(std.fs.File.stderr());
-        try ui.printLevel(stderr, use_color, .err, "branch name required", .{});
-        std.process.exit(1);
-    };
+    const branch = requireArg(ctx, "BRANCH", "branch name required");
     try switch_cmd.runMachine(ctx.allocator, branch);
 }
 
@@ -351,13 +340,7 @@ fn runInternalCompleteWorktreeBranches(ctx: zli.CommandContext) !void {
 }
 
 fn runShellInit(ctx: zli.CommandContext) !void {
-    const shell = ctx.getArg("SHELL") orelse {
-        const stderr = std.fs.File.stderr().deprecatedWriter();
-        const use_color = ui.shouldUseColor(std.fs.File.stderr());
-        try ui.printLevel(stderr, use_color, .err, "shell name required (zsh, bash, fish, nu)", .{});
-        std.process.exit(1);
-    };
-
+    const shell = requireArg(ctx, "SHELL", "shell name required (zsh, bash, fish, nu)");
     try shell_init_cmd.run(shell);
 }
 
