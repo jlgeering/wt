@@ -443,3 +443,81 @@ test "integration: wt add treats configured remote prefix branch names as remote
     try expectBranchMissing(repo_path, "origin/foo");
     try expectBranchMissing(repo_path, "foo");
 }
+
+test "integration: wt switch and __switch print the matching worktree path" {
+    const allocator = std.testing.allocator;
+    const wt_bin = std.process.getEnvVarOwned(allocator, "WT_TEST_WT_BIN") catch return error.MissingWtTestBinary;
+    defer allocator.free(wt_bin);
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const wt_path = try worktree.computeWorktreePath(allocator, repo_path, "feat-switch-int");
+    defer {
+        helpers.cleanupPath(allocator, wt_path);
+        allocator.free(wt_path);
+    }
+
+    const add_output = try git.runGit(
+        allocator,
+        repo_path,
+        &.{ "worktree", "add", "-b", "feat-switch-int", wt_path },
+    );
+    allocator.free(add_output);
+
+    const public_result = try runWt(allocator, wt_bin, repo_path, &.{ "switch", "feat-switch-int" });
+    defer public_result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(u8, 0), public_result.exit_code);
+    try std.testing.expectEqualStrings(wt_path, std.mem.trim(u8, public_result.stdout, " \t\r\n"));
+    try std.testing.expectEqualStrings("", public_result.stderr);
+
+    const machine_result = try runWt(allocator, wt_bin, repo_path, &.{ "__switch", "feat-switch-int" });
+    defer machine_result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(u8, 0), machine_result.exit_code);
+    try std.testing.expectEqualStrings(wt_path, std.mem.trim(u8, machine_result.stdout, " \t\r\n"));
+    try std.testing.expectEqualStrings("", machine_result.stderr);
+}
+
+test "integration: wt switch reports missing branch while __switch stays silent" {
+    const allocator = std.testing.allocator;
+    const wt_bin = std.process.getEnvVarOwned(allocator, "WT_TEST_WT_BIN") catch return error.MissingWtTestBinary;
+    defer allocator.free(wt_bin);
+
+    const repo_path = try helpers.createTestRepo(allocator);
+    defer {
+        helpers.cleanupPath(allocator, repo_path);
+        allocator.free(repo_path);
+    }
+
+    const wt_path = try worktree.computeWorktreePath(allocator, repo_path, "feat-switch-present");
+    defer {
+        helpers.cleanupPath(allocator, wt_path);
+        allocator.free(wt_path);
+    }
+
+    const add_output = try git.runGit(
+        allocator,
+        repo_path,
+        &.{ "worktree", "add", "-b", "feat-switch-present", wt_path },
+    );
+    allocator.free(add_output);
+
+    const public_result = try runWt(allocator, wt_bin, repo_path, &.{ "switch", "feat-switch-missing" });
+    defer public_result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(u8, 1), public_result.exit_code);
+    try std.testing.expectEqualStrings("", public_result.stdout);
+    try std.testing.expect(std.mem.indexOf(u8, public_result.stderr, "no worktree for branch 'feat-switch-missing'") != null);
+
+    const machine_result = try runWt(allocator, wt_bin, repo_path, &.{ "__switch", "feat-switch-missing" });
+    defer machine_result.deinit(allocator);
+
+    try std.testing.expectEqual(@as(u8, 1), machine_result.exit_code);
+    try std.testing.expectEqualStrings("", machine_result.stdout);
+    try std.testing.expectEqualStrings("", machine_result.stderr);
+}
