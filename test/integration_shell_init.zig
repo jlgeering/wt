@@ -1718,7 +1718,10 @@ test "integration: nushell non-interactive bare wt passthrough preserves LAST_EX
     try std.testing.expect(std.mem.indexOf(u8, log_data, "__pick-worktree") == null);
 }
 
-test "integration: shell completion parity covers partial branches flags and aliases" {
+// This test checks the candidate sets each shell adapter returns.
+// It intentionally does not verify shell-specific insertion behavior such as
+// whether selecting `github/` appends a trailing space.
+test "integration: shell completion parity covers candidate text for partial branches flags and aliases" {
     const allocator = std.testing.allocator;
 
     const temp_root = try helpers.createTempDir(allocator);
@@ -1941,7 +1944,10 @@ test "integration: shell completion parity covers partial branches flags and ali
     }
 }
 
-test "integration: zsh remote branch target completion keeps remote prefix unsuffixed by space" {
+// This is narrower than the cross-shell parity test above: it verifies zsh's
+// insertion behavior by tracing the exact compadd arguments used for a remote
+// prefix candidate.
+test "integration: zsh remote branch target completion suppresses trailing space for remote prefixes" {
     const allocator = std.testing.allocator;
 
     if (!shellExists(allocator, "zsh")) {
@@ -1998,6 +2004,9 @@ test "integration: zsh remote branch target completion keeps remote prefix unsuf
     try expectOutputContainsLine(result.stdout, "ARG<github/>");
 }
 
+// This is narrower than the cross-shell parity test above: it verifies bash's
+// insertion behavior by tracing the compopt call that keeps readline from
+// appending a trailing space after a remote prefix candidate.
 test "integration: bash remote branch target completion requests nospace for remote prefixes" {
     const allocator = std.testing.allocator;
 
