@@ -539,17 +539,17 @@ fn removeCandidate(
 ) !void {
     const stdout = std.fs.File.stdout().deprecatedWriter();
     const stderr = std.fs.File.stderr().deprecatedWriter();
-    const use_color = ui.shouldUseColor(std.fs.File.stderr());
+    const use_stderr_color = ui.shouldUseColor(std.fs.File.stderr());
 
     std.fs.cwd().access(candidate.path, .{}) catch {
-        try ui.printLevel(stderr, use_color, .err, "worktree at {s} does not exist", .{candidate.path});
+        try ui.printLevel(stderr, use_stderr_color, .err, "worktree at {s} does not exist", .{candidate.path});
         std.process.exit(1);
     };
 
     if (!force and !candidate.safe) {
         if (!std.fs.File.stdin().isTty()) {
-            try ui.printLevel(stderr, use_color, .err, "worktree removal is unsafe and requires confirmation", .{});
-            try ui.printLevel(stderr, use_color, .info, "use --force to remove anyway", .{});
+            try ui.printLevel(stderr, use_stderr_color, .err, "worktree removal is unsafe and requires confirmation", .{});
+            try ui.printLevel(stderr, use_stderr_color, .info, "use --force to remove anyway", .{});
             std.process.exit(1);
         }
 
@@ -563,44 +563,44 @@ fn removeCandidate(
             candidate.has_local_commits,
             base_ref,
         ) catch {
-            try ui.printLevel(stderr, use_color, .err, "failed to read confirmation", .{});
+            try ui.printLevel(stderr, use_stderr_color, .err, "failed to read confirmation", .{});
             std.process.exit(1);
         };
 
         if (!confirmed) {
-            try ui.printLevel(stderr, use_color, .warn, "aborted", .{});
+            try ui.printLevel(stderr, use_stderr_color, .warn, "aborted", .{});
             std.process.exit(1);
         }
     }
 
     if (force) {
         const rm_result = git.runGit(allocator, null, &.{ "worktree", "remove", "--force", candidate.path }) catch {
-            try ui.printLevel(stderr, use_color, .err, "could not remove worktree", .{});
+            try ui.printLevel(stderr, use_stderr_color, .err, "could not remove worktree", .{});
             std.process.exit(1);
         };
         allocator.free(rm_result);
     } else {
         const rm_result = git.runGit(allocator, null, &.{ "worktree", "remove", candidate.path }) catch {
-            try ui.printLevel(stderr, use_color, .err, "could not remove worktree", .{});
+            try ui.printLevel(stderr, use_stderr_color, .err, "could not remove worktree", .{});
             std.process.exit(1);
         };
         allocator.free(rm_result);
     }
 
-    try ui.printLevel(stderr, use_color, .success, "removed worktree {s}", .{candidate.path});
+    try ui.printLevel(stderr, use_stderr_color, .success, "removed worktree {s}", .{candidate.path});
 
     switch (branchDeleteAction(candidate)) {
         .delete => {
             const branch = candidate.branch.?;
             const del_result = git.runGit(allocator, main_path, &.{ "branch", "-d", branch }) catch {
-                try ui.printLevel(stderr, use_color, .warn, "branch '{s}' kept (has local commits)", .{branch});
+                try ui.printLevel(stderr, use_stderr_color, .warn, "branch '{s}' kept (has local commits)", .{branch});
                 return;
             };
             allocator.free(del_result);
-            try ui.printLevel(stderr, use_color, .success, "deleted merged branch '{s}'", .{branch});
+            try ui.printLevel(stderr, use_stderr_color, .success, "deleted merged branch '{s}'", .{branch});
         },
         .skip_detached => {
-            try ui.printLevel(stderr, use_color, .info, "detached worktree removed; no branch deleted", .{});
+            try ui.printLevel(stderr, use_stderr_color, .info, "detached worktree removed; no branch deleted", .{});
         },
     }
 }
@@ -645,7 +645,7 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
             const current_branch = wt_info.branch orelse "(detached)";
             try printBlockedCurrentWorktreeMessage(
                 stderr,
-                use_color,
+                use_stderr_color,
                 current_branch,
                 wt_info.path,
                 main_path,
@@ -673,7 +673,7 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
             const current_branch = current_secondary.branch orelse "(detached)";
             try printBlockedCurrentWorktreeMessage(
                 stderr,
-                use_color,
+                use_stderr_color,
                 current_branch,
                 current_secondary.path,
                 main_path,
@@ -689,7 +689,7 @@ pub fn run(allocator: std.mem.Allocator, options: RmOptions) !void {
         const current_branch = current_secondary.branch orelse "(detached)";
         try printSkipCurrentWorktreeMessage(
             stderr,
-            use_color,
+            use_stderr_color,
             current_branch,
             current_secondary.path,
         );
