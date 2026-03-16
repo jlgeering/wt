@@ -36,14 +36,47 @@ wt __complete-worktree-branches
 
 ## Completion via shell-init
 
-When users load `wt shell-init bash` (via `eval`), `wt` registers Bash completion for subcommands, command-specific flags/values, and relevant positional values.
+When users load `wt shell-init`, completion is part of the supported interactive surface for `zsh`,
+`bash`, `fish`, and `nu`.
 
-When users load `wt shell-init zsh` (via `eval`), `wt shell-init fish` (via `source`), or `wt shell-init nu` (via `source`), `wt` registers completion for:
+Parity rule:
+
+- supported shells should expose the same completion behavior unless a shell-specific exception is
+  explicitly documented
+- differences that are not documented exceptions are bugs
+
+Completion surface required for supported shells:
 
 - subcommands (`list`, `ls`, `new`, `add`, `rm`, `switch`, `init`, `shell-init`)
-- positional arguments for `new|add`, `rm`, `switch`, and `shell-init`
+- aliases complete anywhere the canonical command name completes
+- root flags: `--help`, `-h`, `--version`, `-V`
+- command flags for public commands
+- constrained flag values where applicable
+- dynamic positional candidates for `new|add`, `rm`, `switch`, and `shell-init`
+- prefix filtering for partial tokens, including dynamic candidates
 
-zsh/fish/nu completion intentionally does not suggest flags.
+Dynamic candidate contracts:
+
+- `wt new|add <branch>`: local branch names
+- `wt new|add <branch> <base>`: branch and remote refs
+- `wt rm [branch]`: worktree branch names from existing named worktrees, excluding the current
+  worktree branch and excluding detached entries
+- `wt switch <branch>`: same candidate set as `wt rm [branch]`
+- `wt shell-init <shell>`: `zsh`, `bash`, `fish`, `nu`, `nushell`
+
+Dynamic completion invariants:
+
+- candidates are deduplicated before presentation
+- partial-token completion filters candidates by the typed prefix rather than requiring a fresh
+  positional token
+- internal `__*` commands are never suggested by public completion
+
+Constrained flag-value completions:
+
+- `wt rm --picker`: `auto`, `builtin`, `fzf`
+
+Guide-level setup docs may describe how to install shell integration, but this section is the
+normative completion contract.
 
 ## `wt rm` interaction model
 

@@ -23,9 +23,10 @@ When loaded via `wt shell-init zsh`, `wt` also registers zsh completion for:
   - `wt new|add <branch> [base]`: git refs
   - `wt rm [branch]`: branch names from `wt __list` (excluding current worktree branch)
   - `wt switch <branch>`: branch names from `wt __list` (excluding current worktree branch)
-  - `wt shell-init <shell>`: `zsh`, `bash`, `fish`, `nu`, `nushell`
+- `wt shell-init <shell>`: `zsh`, `bash`, `fish`, `nu`, `nushell`
 
-Completion intentionally does not suggest flags.
+For the normative completion contract, including parity expectations across supported shells, see
+`docs/specs/command-reference.md`.
 
 ## bash
 
@@ -66,9 +67,10 @@ When loaded via `wt shell-init fish`, `wt` also registers fish completion for:
   - `wt new|add <branch> [base]`: git refs
   - `wt rm [branch]`: branch names from `wt __list` (excluding current worktree branch)
   - `wt switch <branch>`: branch names from `wt __list` (excluding current worktree branch)
-  - `wt shell-init <shell>`: `zsh`, `bash`, `fish`, `nu`, `nushell`
+- `wt shell-init <shell>`: `zsh`, `bash`, `fish`, `nu`, `nushell`
 
-Completion intentionally does not suggest flags.
+For the normative completion contract, including parity expectations across supported shells, see
+`docs/specs/command-reference.md`.
 
 ## nushell
 
@@ -87,6 +89,9 @@ The `nu` integration provides:
 - completion for subcommands and key positionals (`new|add`, `rm`, `switch`, `shell-init`).
 - shell aliases accepted by `shell-init`: `zsh`, `bash`, `fish`, `nu` (`nushell` is also accepted).
 - interactive no-arg picker stderr handling that prefers `err> /dev/tty`, with fallback to captured stderr if that redirection fails.
+
+For the normative completion contract, including parity expectations across supported shells, see
+`docs/specs/command-reference.md`.
 
 ## Behavior
 
@@ -125,7 +130,7 @@ The `nu` integration provides:
 
 - The wrapper function is intentionally named `wt`, the same as the binary.
 - Inside the wrapper, shell-specific bypass forms (`command wt` for zsh/bash/fish, `^wt` for nushell) invoke the real binary.
-- Bash integration also installs tab completion for `wt` (subcommands, common flags, `rm --picker` values, and `shell-init` shell names).
+- Completion setup details live in this guide; completion behavior contracts live in `docs/specs/command-reference.md`.
 
 ## Quick verification
 
